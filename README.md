@@ -10,6 +10,15 @@ build.bat
 Output: `build\Release\RetroAmp.exe`, with bundled skins in `build\Release\Skins\`.
 The CRT is linked statically, so the exe runs without any redistributables.
 
+### Installer
+
+```
+build_installer.bat
+```
+Builds the player and an Inno Setup 6 installer: `installer\Output\RetroAmp_Setup_<version>.exe`
+(Polish/English, all users or current user only, Start menu and optional desktop shortcut,
+"Open with" for audio files and playlists, `.wsz` skins open in RetroAmp, "Play in RetroAmp" on folders).
+
 ## Features
 
 - **Skins:** classic Winamp 2.x format (`.wsz` / `.zip` / folder of BMPs). Each skin redraws the whole interface.

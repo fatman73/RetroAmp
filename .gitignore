@@ -16,3 +16,4 @@ __pycache__/
 
 # Generated previews
 skins/*_preview.png
+installer/Output/
