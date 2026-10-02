@@ -1,0 +1,18 @@
+# Build output
+build/
+out/
+.vs/
+*.user
+build_log.txt
+
+# Test audio (WAV files are never committed)
+*.wav
+*.WAV
+*.Wav
+
+# Python cache (skin generators)
+__pycache__/
+*.pyc
+
+# Generated previews
+skins/*_preview.png

@@ -1,0 +1,6 @@
+[Text]
+Normal=#EC7882
+Current=#FFFFFF
+NormalBG=#100408
+SelectedBG=#78142C
+Font=Segoe UI
