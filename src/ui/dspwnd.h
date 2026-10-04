@@ -6,6 +6,7 @@
 class DspWnd : public SkinWnd {
 public:
     DspWnd() : SkinWnd(W_DSP) {}
+    ~DspWnd() override;
 
 protected:
     void paint(Canvas& c) override;
@@ -23,6 +24,11 @@ private:
     void setP(int s, float p);
     std::string valueText(int s) const;
     void drawBox(Canvas& c, int x, int y, int w, int h, const std::string& text, bool on, bool pressed);
+    void styledText(Canvas& c, const std::string& s, int x, int y, int w, int h, uint32_t col, UINT align, int size);
+    HFONT font(int size);
+    std::map<int, HFONT> fonts_;
+    int fontScale_ = 0;
+    std::wstring fontName_;
     int slider_ = -1;
     int hoverSlider_ = -1;
     PushState push_;

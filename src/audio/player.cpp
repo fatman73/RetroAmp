@@ -438,6 +438,15 @@ void Player::threadMain(uint64_t session, std::wstring path, double startPos, bo
             if (got < (int)avail) ended = true;
             if (got > 0) {
                 ToStereo(src.data(), srcCh, got, stereo.data());
+                {
+                    double sl = 0, sr = 0;
+                    for (int i = 0; i < got; i++) {
+                        sl += (double)stereo[i * 2] * stereo[i * 2];
+                        sr += (double)stereo[i * 2 + 1] * stereo[i * 2 + 1];
+                    }
+                    levelL_ = (float)std::sqrt(sl / got);
+                    levelR_ = (float)std::sqrt(sr / got);
+                }
                 dsp.process(stereo.data(), got, visTmp.data());
                 {
                     std::lock_guard<std::mutex> lk(visMtx_);
@@ -467,5 +476,6 @@ void Player::threadMain(uint64_t session, std::wstring path, double startPos, bo
     }
     out.close();
     dec.reset();
+    levelL_ = levelR_ = 0;
     CoUninitialize();
 }

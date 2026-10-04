@@ -1,0 +1,6 @@
+[Text]
+Normal=#462812
+Current=#AA2814
+NormalBG=#F0E4C6
+SelectedBG=#DEC48C
+Font=Georgia

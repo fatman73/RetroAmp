@@ -56,12 +56,20 @@ public:
     void fill(int x, int y, int w, int h, uint32_t c);
     void pixel(int x, int y, uint32_t c) { fill(x, y, 1, 1, c); }
     void frame(int x, int y, int w, int h, uint32_t c);
+    void darken(int x, int y, int w, int h, float k);  // multiplies the area by k (pressed look)
+    // Copy of the whole canvas as an Image (scale = this canvas' scale).
+    Image snapshot() const;
+    // Draws the whole image into a logical (fractional) rectangle with bilinear filtering.
+    void blitScaled(const Image& img, float dx, float dy, float dw, float dh);
     // Physical-pixel drawing (for smooth curves at high zoom); clipped to the logical clip.
     void fillPhys(int px, int py, int w, int h, uint32_t c);
     void spanPhys(int px, int py0, int py1, int thickness, uint32_t c);
 
     // TrueType text, coordinates logical, font height already scaled by caller.
-    void text(const std::wstring& str, int x, int y, int w, int h, HFONT font, uint32_t color, UINT dtFlags);
+    // Optional horizontal clip (clipX/clipW) in addition to the canvas clip, for scrolling text.
+    void text(const std::wstring& str, int x, int y, int w, int h, HFONT font, uint32_t color, UINT dtFlags,
+              int clipX = INT_MIN, int clipW = 0);
+    int textWidth(const std::wstring& str, HFONT font);  // in skin pixels
     // down = 2 averages 2x2 blocks (used for fractional zoom such as 150%).
     void present(HDC target, int down = 1);
 

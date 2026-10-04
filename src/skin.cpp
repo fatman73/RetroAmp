@@ -23,6 +23,8 @@ static std::string BaseNameA(const std::string& p) {
 void Skin::prepare(int scale) {
     if (prepared_ == scale) return;
     for (int i = 0; i < SB_COUNT; i++) scaled_[i] = RescaleImage(bmp_[i], scale);
+    animScaled_.resize(animImg_.size());
+    for (size_t i = 0; i < animImg_.size(); i++) animScaled_[i] = RescaleImage(animImg_[i], scale);
     prepared_ = scale;
 }
 
@@ -40,6 +42,7 @@ bool Skin::loadDefault(HINSTANCE inst) {
     };
     for (auto n : kBmpNames) addRes(n);
     for (auto n : kTextNames) addRes(n);
+    for (auto n : {"anim.txt", "panel.bmp", "reel1.bmp", "reel2.bmp", "vuleft.bmp", "vuright.bmp", "led.bmp", "dspbody.bmp", "dspbtn.bmp"}) addRes(n);
     if (files.empty()) {
         // Development fallback: load from <exe>\skins\RetroBlue
         std::wstring dir = PathJoin(GetExeDir(), L"skins\\RetroBlue");
@@ -65,7 +68,9 @@ bool Skin::loadFrom(const std::wstring& path, std::wstring& error) {
             if (base == n) return true;
         for (auto n : kTextNames)
             if (base == n) return true;
-        return false;
+        // animation extension: anim.txt and any extra image it may reference
+        if (base == "anim.txt") return true;
+        return base.size() > 4 && base.compare(base.size() - 4, 4, ".bmp") == 0;
     };
     if (DirExists(path)) {
         std::function<void(const std::wstring&, int)> scan = [&](const std::wstring& dir, int depth) {
@@ -169,6 +174,15 @@ bool Skin::apply(const FileMap& files, bool isDefault) {
     if (files.count("pledit.txt")) parsePledit(txt("pledit.txt"));
     if (files.count("viscolor.txt")) parseViscolor(txt("viscolor.txt"));
     if (files.count("region.txt")) parseRegion(txt("region.txt"));
+    anims.clear();
+    buttons.clear();
+    dspStyle = DspStyle();
+    hasTurnSprite = false;
+    animImg_.clear();
+    animScaled_.clear();
+    hasPanel = false;
+    panelImage = -1;
+    if (files.count("anim.txt")) parseAnim(txt("anim.txt"), files, k);
     return bmp_[SB_MAIN].valid();
 }
 
@@ -335,4 +349,142 @@ void Skin::drawText(Canvas& c, const std::string& text, int x, int y, bool keyed
             c.blit(t, col * 5, row * 6, 5, 6, x, y);
         x += 5;
     }
+}
+
+// ---------------------------------------------------------------------------
+// ANIM.TXT - RetroAmp animation extension (INI style, one section per element)
+void Skin::parseAnim(const std::wstring& t, const FileMap& files, int hd) {
+    std::map<std::string, int> imageIndex;
+    auto image = [&](const std::wstring& name) -> int {
+        std::string key = BaseNameA(LowerA(WideToUtf8(Trim(name))));
+        auto it = imageIndex.find(key);
+        if (it != imageIndex.end()) return it->second;
+        auto f = files.find(key);
+        if (f == files.end()) return -1;
+        Image im;
+        if (!LoadImageFromMemory(f->second.data(), f->second.size(), im)) return -1;
+        im.scale = (hd > 1 && im.w % hd == 0 && im.h % hd == 0) ? hd : 1;
+        animImg_.push_back(std::move(im));
+        imageIndex[key] = (int)animImg_.size() - 1;
+        return (int)animImg_.size() - 1;
+    };
+    auto lower = [](std::wstring s) { return ToLower(Trim(s)); };
+
+    std::wstring section;
+    AnimElem cur;
+    SkinButton btn;
+    bool inElem = false, inButton = false;
+    auto flush = [&]() {
+        if (inButton && btn.w > 0 && btn.h > 0 && !btn.action.empty()) buttons.push_back(btn);
+        inButton = false;
+        btn = SkinButton();
+        if (inElem && (cur.image >= 0 || cur.mode == AM_SCOPE || cur.mode == AM_SPECTRUM || cur.mode == AM_TEXT)) {
+            if (cur.fw <= 0 && cur.image >= 0) cur.fw = animImg_[cur.image].lw();
+            if (cur.fh <= 0 && cur.image >= 0) cur.fh = animImg_[cur.image].lh();
+            if (cur.w <= 0) cur.w = cur.fw;
+            if (cur.h <= 0) cur.h = cur.fh;
+            if (cur.cols <= 0) cur.cols = std::max(1, cur.frames);
+            anims.push_back(cur);
+        }
+        inElem = false;
+        cur = AnimElem();
+    };
+    size_t a = 0;
+    while (a <= t.size()) {
+        size_t b = t.find_first_of(L"\r\n", a);
+        if (b == std::wstring::npos) b = t.size();
+        std::wstring line = Trim(t.substr(a, b - a));
+        a = b + 1;
+        if (line.empty() || line[0] == L';' || line[0] == L'#') continue;
+        if (line[0] == L'[') {
+            flush();
+            section = lower(line.substr(1, line.find(L']') - 1));
+            inButton = section.rfind(L"button", 0) == 0;
+            inElem = section != L"panel" && section != L"dsp" && section != L"playlist" && !inButton;
+            continue;
+        }
+        size_t eq = line.find(L'=');
+        if (eq == std::wstring::npos) continue;
+        std::wstring k = lower(line.substr(0, eq)), v = Trim(line.substr(eq + 1));
+        int iv = _wtoi(v.c_str());
+        float fv = (float)_wtof(v.c_str());
+        if (inButton) {
+            if (k == L"x") btn.x = iv;
+            else if (k == L"y") btn.y = iv;
+            else if (k == L"w") btn.w = iv;
+            else if (k == L"h") btn.h = iv;
+            else if (k == L"action") btn.action = lower(v);
+            continue;
+        }
+        if (section == L"dsp") {
+            if (k == L"body") dspStyle.body = image(v);
+            else if (k == L"button") dspStyle.button = image(v);
+            else if (k == L"text") ParseColor(v, dspStyle.text);
+            else if (k == L"texton") ParseColor(v, dspStyle.textOn);
+            else if (k == L"label") ParseColor(v, dspStyle.label);
+            else if (k == L"font") dspStyle.font = v;
+            continue;
+        }
+        if (section == L"playlist") {
+            if (k == L"turnsprite") hasTurnSprite = iv != 0;
+            continue;
+        }
+        if (section == L"panel") {
+            if (k == L"width") panelW = Clamp(iv, 50, 2000);
+            else if (k == L"height") panelH = Clamp(iv, 14, 2000);
+            else if (k == L"image") {
+                panelImage = image(v);
+                hasPanel = panelImage >= 0;
+            }
+            continue;
+        }
+        if (k == L"window") {
+            std::wstring w = lower(v);
+            cur.window = w == L"eq" || w == L"equalizer" ? 1 : w == L"playlist" || w == L"pl" ? 2 : w == L"panel" ? 5 : 0;
+        } else if (k == L"mode") {
+            std::wstring m = lower(v);
+            cur.mode = m == L"spin" ? AM_SPIN : m == L"level" ? AM_LEVEL : m == L"state" ? AM_STATE
+                     : m == L"progress" ? AM_PROGRESS : m == L"scope" ? AM_SCOPE : m == L"spectrum" ? AM_SPECTRUM
+                     : m == L"text" ? AM_TEXT : AM_LOOP;
+        } else if (k == L"when") {
+            std::wstring m = lower(v);
+            cur.when = m == L"playing" ? AW_PLAYING : m == L"paused" ? AW_PAUSED : m == L"stopped" ? AW_STOPPED
+                     : m == L"active" ? AW_ACTIVE : AW_ALWAYS;
+        } else if (k == L"image") cur.image = image(v);
+        else if (k == L"srcx") cur.sx = iv;
+        else if (k == L"srcy") cur.sy = iv;
+        else if (k == L"framew") cur.fw = iv;
+        else if (k == L"frameh") cur.fh = iv;
+        else if (k == L"frames") cur.frames = std::max(1, iv);
+        else if (k == L"columns") cur.cols = iv;
+        else if (k == L"x") cur.x = iv;
+        else if (k == L"y") cur.y = iv;
+        else if (k == L"w") cur.w = iv;
+        else if (k == L"h") cur.h = iv;
+        else if (k == L"fps") cur.fps = fv;
+        else if (k == L"attack") cur.attack = Clamp(fv, 0.01f, 1.0f);
+        else if (k == L"release") cur.release = Clamp(fv, 0.005f, 1.0f);
+        else if (k == L"gain") cur.gain = fv;
+        else if (k == L"channel") {
+            std::wstring c = lower(v);
+            cur.channel = c == L"left" || c == L"l" ? 1 : c == L"right" || c == L"r" ? 2 : c == L"bass" ? 3
+                        : c == L"mid" ? 4 : c == L"treble" ? 5 : 0;
+        } else if (k == L"color") ParseColor(v, cur.color);
+        else if (k == L"color2") ParseColor(v, cur.color2);
+        else if (k == L"font") cur.font = v;
+        else if (k == L"size") cur.size = Clamp(iv, 3, 200);
+        else if (k == L"bold") cur.bold = iv != 0;
+        else if (k == L"bars") cur.bars = iv;
+        else if (k == L"align") {
+            std::wstring al = lower(v);
+            cur.align = al == L"center" ? 1 : al == L"right" ? 2 : 0;
+        } else if (k == L"text") {
+            std::wstring tk = lower(v);
+            cur.textKind = tk == L"time" ? AT_TIME : tk == L"remain" ? AT_REMAIN : tk == L"bitrate" ? AT_BITRATE
+                         : tk == L"samplerate" ? AT_SAMPLERATE : tk == L"track" ? AT_TRACK : tk == L"clock" ? AT_CLOCK
+                         : tk == L"counter" ? AT_COUNTER : tk == L"title" ? AT_TITLE : AT_STATIC;
+            if (cur.textKind == AT_STATIC) cur.text = v;
+        }
+    }
+    flush();
 }

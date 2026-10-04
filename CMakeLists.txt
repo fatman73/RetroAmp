@@ -24,6 +24,8 @@ add_executable(RetroAmp WIN32
     src/ui/plwnd.cpp
     src/ui/dspwnd.cpp
     src/ui/viswnd.cpp
+    src/ui/anim.cpp
+    src/ui/panelwnd.cpp
     src/vis/visengine.cpp
     res/retroamp.rc
 )

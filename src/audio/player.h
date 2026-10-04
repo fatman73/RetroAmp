@@ -46,6 +46,12 @@ public:
     void setParams(const DspParams& p);
     DspParams params() const;
 
+    // Current RMS level of the left / right channel (pre-volume, 0..1).
+    void levels(float& l, float& r) const {
+        l = levelL_.load();
+        r = levelR_.load();
+    }
+
     // Copies the most recently *heard* `n` mono samples (pre-volume). Returns false if not playing.
     bool visSamples(float* out, int n) const;
 
@@ -74,4 +80,5 @@ private:
     std::vector<float> vis_ = std::vector<float>(kVisSize);
     uint64_t visWritten_ = 0;
     std::atomic<uint64_t> visPlayed_{0};
+    std::atomic<float> levelL_{0}, levelR_{0};
 };

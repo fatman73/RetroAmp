@@ -264,6 +264,61 @@ void Canvas::fill(int x, int y, int w, int h, uint32_t c) {
     }
 }
 
+void Canvas::darken(int x, int y, int w, int h, float k) {
+    if (!bits) return;
+    int x0 = std::max(x, cx0_) * s, y0 = std::max(y, cy0_) * s;
+    int x1 = std::min(x + w, cx1_) * s, y1 = std::min(y + h, cy1_) * s;
+    GdiFlush();
+    int m = (int)(Clamp(k, 0.0f, 1.0f) * 256);
+    for (int py = y0; py < y1; py++) {
+        uint32_t* row = bits + (size_t)py * pw;
+        for (int px = x0; px < x1; px++) {
+            uint32_t c = row[px];
+            row[px] = ((((c >> 16) & 255) * m >> 8) << 16) | ((((c >> 8) & 255) * m >> 8) << 8) | ((c & 255) * m >> 8);
+        }
+    }
+}
+
+Image Canvas::snapshot() const {
+    Image im;
+    if (!bits) return im;
+    GdiFlush();
+    im.w = pw;
+    im.h = ph;
+    im.scale = s;
+    im.px.assign(bits, bits + (size_t)pw * ph);
+    return im;
+}
+
+void Canvas::blitScaled(const Image& img, float dx, float dy, float dw, float dh) {
+    if (!bits || !img.valid() || dw <= 0 || dh <= 0) return;
+    GdiFlush();
+    int x0 = std::max((int)std::floor(dx * s), cx0_ * s), y0 = std::max((int)std::floor(dy * s), cy0_ * s);
+    int x1 = std::min((int)std::ceil((dx + dw) * s), cx1_ * s), y1 = std::min((int)std::ceil((dy + dh) * s), cy1_ * s);
+    const float fx = img.w / (dw * s), fy = img.h / (dh * s);
+    for (int py = y0; py < y1; py++) {
+        float sy = (py + 0.5f - dy * s) * fy - 0.5f;
+        int iy = (int)std::floor(sy);
+        int wy = (int)((sy - iy) * 256);
+        int ya = Clamp(iy, 0, img.h - 1), yb = Clamp(iy + 1, 0, img.h - 1);
+        const uint32_t* ra = &img.px[(size_t)ya * img.w];
+        const uint32_t* rb = &img.px[(size_t)yb * img.w];
+        uint32_t* dst = bits + (size_t)py * pw;
+        for (int px = x0; px < x1; px++) {
+            float sx = (px + 0.5f - dx * s) * fx - 0.5f;
+            int ix = (int)std::floor(sx);
+            int wx = (int)((sx - ix) * 256);
+            int xa = Clamp(ix, 0, img.w - 1), xb = Clamp(ix + 1, 0, img.w - 1);
+            uint32_t a = ra[xa], b = ra[xb], c = rb[xa], d = rb[xb];
+            int w00 = (256 - wx) * (256 - wy), w10 = wx * (256 - wy), w01 = (256 - wx) * wy, w11 = wx * wy;
+            auto ch = [&](int sh) {
+                return ((((a >> sh) & 255) * w00 + ((b >> sh) & 255) * w10 + ((c >> sh) & 255) * w01 + ((d >> sh) & 255) * w11) >> 16) << sh;
+            };
+            dst[px] = ch(16) | ch(8) | ch(0);
+        }
+    }
+}
+
 void Canvas::frame(int x, int y, int w, int h, uint32_t c) {
     fill(x, y, w, 1, c);
     fill(x, y + h - 1, w, 1, c);
@@ -340,10 +395,24 @@ void Canvas::tile(const Image& img, int sx, int sy, int sw, int sh, int dx, int 
     cy1_ = oy1;
 }
 
-void Canvas::text(const std::wstring& str, int x, int y, int w, int h, HFONT font, uint32_t color, UINT flags) {
+int Canvas::textWidth(const std::wstring& str, HFONT font) {
+    if (!dc || str.empty()) return 0;
+    HGDIOBJ of = SelectObject(dc, font);
+    SIZE sz = {};
+    GetTextExtentPoint32W(dc, str.c_str(), (int)str.size(), &sz);
+    SelectObject(dc, of);
+    return (sz.cx + s - 1) / s;
+}
+
+void Canvas::text(const std::wstring& str, int x, int y, int w, int h, HFONT font, uint32_t color, UINT flags, int clipX,
+                  int clipW) {
     if (!dc) return;
     int x0 = std::max(x, cx0_), y0 = std::max(y, cy0_);
     int x1 = std::min(x + w, cx1_), y1 = std::min(y + h, cy1_);
+    if (clipX != INT_MIN) {
+        x0 = std::max(x0, clipX);
+        x1 = std::min(x1, clipX + clipW);
+    }
     if (x0 >= x1 || y0 >= y1) return;
     GdiFlush();
     HGDIOBJ of = SelectObject(dc, font);

@@ -1,5 +1,6 @@
 #include <windows.h>
 #include "resource.h"
+#include "../src/version.h"
 
 IDI_APP ICON "retroamp.ico"
 
@@ -22,6 +23,16 @@ EQMAIN_BMP    RCDATA "skin/eqmain.png"
 PLEDIT_BMP    RCDATA "skin/pledit.png"
 PLEDIT_TXT    RCDATA "skin/pledit.txt"
 VISCOLOR_TXT  RCDATA "skin/viscolor.txt"
+// cassette deck on the back of the playlist (RetroAmp animation extension)
+ANIM_TXT      RCDATA "skin/anim.txt"
+PANEL_BMP     RCDATA "skin/panel.png"
+REEL1_BMP     RCDATA "skin/reel1.png"
+REEL2_BMP     RCDATA "skin/reel2.png"
+VULEFT_BMP    RCDATA "skin/vuleft.png"
+VURIGHT_BMP   RCDATA "skin/vuright.png"
+LED_BMP       RCDATA "skin/led.png"
+DSPBODY_BMP   RCDATA "skin/dspbody.png"
+DSPBTN_BMP    RCDATA "skin/dspbtn.png"
 
 IDD_INPUT DIALOGEX 0, 0, 300, 74
 STYLE DS_MODALFRAME | DS_CENTER | WS_POPUP | WS_CAPTION | WS_SYSMENU
@@ -46,8 +57,8 @@ BEGIN
 END
 
 VS_VERSION_INFO VERSIONINFO
- FILEVERSION 1,0,0,0
- PRODUCTVERSION 1,0,0,0
+ FILEVERSION RETROAMP_VER_MAJOR,RETROAMP_VER_MINOR,RETROAMP_VER_PATCH,0
+ PRODUCTVERSION RETROAMP_VER_MAJOR,RETROAMP_VER_MINOR,RETROAMP_VER_PATCH,0
  FILEOS VOS_NT_WINDOWS32
  FILETYPE VFT_APP
 BEGIN
@@ -56,9 +67,9 @@ BEGIN
         BLOCK "040904b0"
         BEGIN
             VALUE "FileDescription", "RetroAmp audio player"
-            VALUE "FileVersion", "1.0.0.0"
+            VALUE "FileVersion", RETROAMP_VERSION_A
             VALUE "ProductName", "RetroAmp"
-            VALUE "ProductVersion", "1.0"
+            VALUE "ProductVersion", RETROAMP_VERSION_A
             VALUE "OriginalFilename", "RetroAmp.exe"
         END
     END

@@ -7,6 +7,9 @@ public:
     ~PlWnd() override;
     void ensureVisible(int idx);
     void clampScroll();
+    // The playlist panel has two sides: the list and (for skins with a deck) the cassette deck.
+    bool deckSide = false;
+    bool hasDeck() const;
 
 protected:
     void paint(Canvas& c) override;
@@ -40,6 +43,13 @@ private:
     void selectOnly(int idx);
     void moveFocus(int idx, bool shift, bool ctrl);
     int scrollHandleY() const;
+    Rc turnRect() const { return {lw - 53, 2, 30, 11}; }  // left of the shade/close gadgets
+    void paintDeck(Canvas& c, const Rc& area);
+    int deckButtonAt(int x, int y) const;  // skin button index under a playlist-window point
+    Canvas deckCanvas_;
+    float deckX_ = 0, deckY_ = 0, deckF_ = 1;
+    int deckPressed_ = -1;
+    bool deckInside_ = false;
 
     int scroll_ = 0;
     int anchor_ = -1, focus_ = -1;

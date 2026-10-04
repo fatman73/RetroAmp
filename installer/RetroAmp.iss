@@ -3,11 +3,12 @@
 ; Output: installer\Output\RetroAmp_Setup_<version>.exe
 
 #define MyAppName "RetroAmp"
-#define MyAppVersion "1.0.0"
 #define MyAppPublisher "fatman73"
 #define MyAppURL "https://github.com/fatman73/RetroAmp"
 #define MyAppExeName "RetroAmp.exe"
 #define BuildDir "..\build\Release"
+; version comes from the built exe (src/version.h -> VERSIONINFO), so it never gets out of sync
+#define MyAppVersion GetStringFileInfo(AddBackslash(SourcePath) + BuildDir + "\" + MyAppExeName, "ProductVersion")
 
 [Setup]
 AppId={{6C2E5B1A-8F3D-4B7E-9A41-2D5C7E9F0B13}

@@ -35,7 +35,8 @@
 #include <vector>
 
 #define APP_NAME L"RetroAmp"
-#define APP_VERSION L"1.0"
+#include "version.h"
+#define APP_VERSION RETROAMP_VERSION_W
 
 // Custom window messages
 enum : UINT {

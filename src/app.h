@@ -4,6 +4,7 @@
 #include "playlist.h"
 #include "settings.h"
 #include "skin.h"
+#include "ui/anim.h"
 #include "ui/skinwnd.h"
 
 class MainWnd;
@@ -11,6 +12,7 @@ class EqWnd;
 class PlWnd;
 class DspWnd;
 class VisWnd;
+class PanelWnd;
 
 enum VisMode { VIS_SPECTRUM, VIS_OSC, VIS_OFF, VIS_COUNT };
 
@@ -37,7 +39,7 @@ public:
     int downsample() const { return zoom % 100 == 0 ? 1 : 2; }
     bool shuffle = false, repeat = false, timeRemaining = false, alwaysOnTop = false, eqAuto = false;
     int visMode = VIS_SPECTRUM;
-    bool visible[W_COUNT] = {true, true, true, false, false};
+    bool visible[W_COUNT] = {true, true, true, false, false, true};
     bool mainShade = false;
     int plTilesW = 0, plTilesH = 1;
     std::wstring skinPath;  // empty = built-in skin
@@ -47,6 +49,8 @@ public:
     PlWnd* plWnd = nullptr;
     DspWnd* dspWnd = nullptr;
     VisWnd* visWnd = nullptr;
+    PanelWnd* panelWnd = nullptr;
+    AnimRuntime anim;
 
     // ---- playback
     void playIndex(int idx, double startPos = 0, bool paused = false);
@@ -88,6 +92,16 @@ public:
     void redraw(int w);
     void redrawAll();
     void setPlaylistSize(int tilesW, int tilesH);
+    // Skins with a panel (cassette deck...): the playlist and the panel share one slot under
+    // the main window ("turn" button / PL button) so the tower stays short.
+    void swapPanelPlaylist();
+    // With a panel skin the deck and the playlist are ONE component: never show both.
+    void enforceSingleSlot();
+    void hideAndCloseGap(int w);
+    // Re-stacks the windows aligned under the main window (the "tower"): no gaps, no overlaps.
+    void restackTower();
+    void skinAction(const std::wstring& action);
+    bool plSwapped = false;
 
     // ---- skins
     bool loadSkin(const std::wstring& path, bool showErrors);
@@ -183,6 +197,8 @@ enum Cmd {
     CMD_WND_PL,
     CMD_WND_DSP,
     CMD_WND_VIS,
+    CMD_WND_PANEL,
+    CMD_PL_TO_DECK,
     CMD_ZOOM100,
     CMD_ZOOM150,
     CMD_ZOOM200,

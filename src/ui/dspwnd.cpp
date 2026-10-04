@@ -15,6 +15,32 @@ const Rc kLimit = {152, 54, 104, 12};
 const Rc kPresets = {152, 69, 104, 12};
 }  // namespace
 
+DspWnd::~DspWnd() {
+    for (auto& f : fonts_) DeleteObject(f.second);
+}
+
+HFONT DspWnd::font(int size) {
+    const Skin& sk = skin();
+    int s = renderScale();
+    if (fontScale_ != s || fontName_ != sk.dspStyle.font) {
+        for (auto& f : fonts_) DeleteObject(f.second);
+        fonts_.clear();
+        fontScale_ = s;
+        fontName_ = sk.dspStyle.font;
+    }
+    auto it = fonts_.find(size);
+    if (it != fonts_.end()) return it->second;
+    HFONT f = CreateFontW(-size * s, 0, 0, 0, FW_BOLD, 0, 0, 0, DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
+                          ANTIALIASED_QUALITY, DEFAULT_PITCH, fontName_.c_str());
+    fonts_[size] = f;
+    return f;
+}
+
+void DspWnd::styledText(Canvas& c, const std::string& txt, int x, int y, int w, int h, uint32_t col, UINT align, int size) {
+    std::wstring t(txt.begin(), txt.end());
+    c.text(t, x, y, w, h, font(size), col, align | DT_SINGLELINE | DT_VCENTER);
+}
+
 int DspWnd::sliderAt(int x, int y) const {
     if (y < kSliderY || y >= kSliderY + 63) return -1;
     for (int s = 0; s < S_COUNT; s++)
@@ -76,6 +102,16 @@ std::string DspWnd::valueText(int s) const {
 
 void DspWnd::drawBox(Canvas& c, int x, int y, int w, int h, const std::string& text, bool on, bool pressed) {
     const Skin& sk = skin();
+    if (sk.dspStyle.styled()) {
+        const Image& b = sk.animImage(sk.dspStyle.button);
+        int frame = (on ? 1 : 0) + (pressed ? 2 : 0);
+        c.blit(b, 0, frame * 12, 104, 12, x, y);
+        std::string t = text;
+        for (auto& ch : t) ch = (char)toupper((unsigned char)ch);
+        styledText(c, t, x + (pressed ? 1 : 0), y + (pressed ? 1 : 0), w, h, on ? sk.dspStyle.textOn : sk.dspStyle.text,
+                   DT_CENTER, 6);
+        return;
+    }
     uint32_t border = sk.plNormal;
     c.fill(x, y, w, h, on ? sk.plSelectedBG : sk.plNormalBG);
     if (pressed) c.fill(x, y, w, h, BlendColor(sk.plSelectedBG, sk.plNormal, 0.3f));
@@ -104,7 +140,11 @@ void DspWnd::paint(Canvas& c) {
     c.tile(pe, 179, 28, 25, 10, 0, H - 10, W, 10);
     c.blit(pe, 0, 72 + 28, 12, 10, 0, H - 10);
     c.blit(pe, 126 + 138, 72 + 28, 12, 10, W - 12, H - 10);
-    c.fill(12, 20, W - 24, H - 30, sk.plNormalBG);
+    const bool styled = sk.dspStyle.styled();
+    if (styled && sk.dspStyle.body >= 0)
+        c.blit(sk.animImage(sk.dspStyle.body), 0, 0, W - 24, H - 30, 12, 20);
+    else
+        c.fill(12, 20, W - 24, H - 30, sk.plNormalBG);
     // title
     std::string title = "BASS BOOST & EFFECTS";
     int tw = (int)title.size() * 5 + 8;
@@ -119,14 +159,22 @@ void DspWnd::paint(Canvas& c) {
         c.blit(eq, 13 + (frame % 14) * 15, 164 + (frame / 14) * 65, 14, 63, x, kSliderY);
         c.blit(eq, 0, slider_ == s ? 176 : 164, 11, 11, x + 1, kSliderY + (int)std::lround((1 - p) * 51));
         std::string v = valueText(s);
-        sk.drawText(c, v, x + 7 - (int)v.size() * 5 / 2, 24, true);
         std::string l = kLabels[s];
-        sk.drawText(c, l, x + 7 - (int)l.size() * 5 / 2, 98, true);
+        if (styled) {
+            styledText(c, v, x - 6, 22, 26, 9, sk.dspStyle.label, DT_CENTER, 6);
+            styledText(c, l, x - 6, 96, 26, 9, sk.dspStyle.label, DT_CENTER, 6);
+        } else {
+            sk.drawText(c, v, x + 7 - (int)v.size() * 5 / 2, 24, true);
+            sk.drawText(c, l, x + 7 - (int)l.size() * 5 / 2, 98, true);
+        }
     }
     if (!d.bassOn) {
         // dim the bass sliders when the section is bypassed
         for (int s = 0; s < S_HARM + 1; s++)
-            for (int y = kSliderY; y < kSliderY + 63; y += 2) c.fill(SliderX(s), y, 14, 1, sk.plNormalBG);
+            for (int y = kSliderY; y < kSliderY + 63; y += 2) {
+                if (styled) c.darken(SliderX(s), y, 14, 1, 0.45f);
+                else c.fill(SliderX(s), y, 14, 1, sk.plNormalBG);
+            }
     }
 
     drawBox(c, kBass.x, kBass.y, kBass.w, kBass.h, d.bassOn ? "BASS: ON" : "BASS: OFF", d.bassOn, push_.is(B_BASS));
@@ -153,8 +201,13 @@ void DspWnd::paint(Canvas& c) {
         }
     }
     c.setClip(150, 86, 108, 18);
-    sk.drawText(c, info.substr(0, 21), 153, 88, true);
-    sk.drawText(c, d.limiter ? "CLIP GUARD ACTIVE" : "NO CLIP GUARD", 153, 96, true);
+    if (styled) {
+        styledText(c, info, 152, 85, 106, 9, sk.dspStyle.label, DT_LEFT, 6);
+        styledText(c, d.limiter ? "CLIP GUARD ACTIVE" : "NO CLIP GUARD", 152, 94, 106, 9, sk.dspStyle.label, DT_LEFT, 6);
+    } else {
+        sk.drawText(c, info.substr(0, 21), 153, 88, true);
+        sk.drawText(c, d.limiter ? "CLIP GUARD ACTIVE" : "NO CLIP GUARD", 153, 96, true);
+    }
     c.resetClip();
 }
 

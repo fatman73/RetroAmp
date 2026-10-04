@@ -23,8 +23,13 @@ Builds the player and an Inno Setup 6 installer: `installer\Output\RetroAmp_Setu
 
 - **Skins:** classic Winamp 2.x format (`.wsz` / `.zip` / folder of BMPs). Each skin redraws the whole interface.
   You can drag a `.wsz` onto the player or use *Options menu → Skins → Load skin*. Thousands of skins are at https://skins.webamp.org.
-  Built-in (HD, sharp at every zoom): Retro Blue (default), Steel Green, Crimson Night, and **Amiga Workbench**
-  (Workbench 3.0 / MagicWB style with the Boing Ball). Generators: `tools/gen_skin.py`, `tools/gen_amiga.py`.
+  Built-in (HD, sharp at every zoom): Retro Blue (default), Steel Green, Crimson Night, **Amiga Workbench**
+  (Workbench 3.0 / MagicWB style with the Boing Ball), and animated skins with their own panel:
+  **HiFi Tower 90** (cassette deck with spinning reels, VU needles and the title on the tape label),
+  **Radiola** (valve radio: Nixie digits, magic eye, dial pointer following the song),
+  **Synthwave '84** (moving neon grid, sunset), **Aqua** (spinning CD) and **Windows 98** (Sound Recorder).
+  The panel and the playlist share a slot (toggle button, **PL** button, or the cassette gadget on the playlist).
+  Generators: `tools/gen_skin.py`, `tools/gen_amiga.py`, `tools/gen_kit.py`. Make your own: see [SKINNING.md](SKINNING.md).
   HD skins use the same sprite layout, just N× larger PNG sheets; classic 1× skins are smoothed with Scale2x/Scale3x.
 - **Formats:** Media Foundation (MP3, WAV, FLAC, AAC/M4A, WMA, ALAC, AC3, MP2) and ffmpeg for everything else
   (OGG, Opus, APE, WavPack, AIFF, TTA, MKA, DSF, MOD/XM/S3M/IT, NSF/SPC/VGM...). ffmpeg is looked up next to

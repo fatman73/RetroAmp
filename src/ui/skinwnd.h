@@ -2,7 +2,7 @@
 #include "../gfx.h"
 #include "../skin.h"
 
-enum WndId { W_MAIN, W_EQ, W_PL, W_DSP, W_VIS, W_COUNT };
+enum WndId { W_MAIN, W_EQ, W_PL, W_DSP, W_VIS, W_PANEL, W_COUNT };
 
 // Base class of the borderless, fully skinned windows (main, EQ, playlist, bass/DSP).
 class SkinWnd {

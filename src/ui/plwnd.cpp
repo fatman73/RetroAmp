@@ -23,11 +23,62 @@ enum {
     B_DOWN,
     B_RESIZE,
     B_SCROLLBAR,
+    B_TURN,
 };
 }  // namespace
 
 PlWnd::~PlWnd() {
     if (font_) DeleteObject(font_);
+}
+
+bool PlWnd::hasDeck() const { return g_app->skin.hasPanel; }
+
+int PlWnd::deckButtonAt(int x, int y) const {
+    if (!deckSide || !hasDeck()) return -1;
+    float u = (x + 0.5f - deckX_) / deckF_, v = (y + 0.5f - deckY_) / deckF_;
+    const auto& bs = skin().buttons;
+    for (int i = 0; i < (int)bs.size(); i++)
+        if (bs[i].window == W_PANEL && u >= bs[i].x && v >= bs[i].y && u < bs[i].x + bs[i].w && v < bs[i].y + bs[i].h)
+            return i;
+    return -1;
+}
+
+void PlWnd::paintDeck(Canvas& c, const Rc& lr) {
+    const Skin& sk = skin();
+    // render the deck at its own size, then fit it into the list area of the playlist frame
+    deckCanvas_.create(sk.panelW, sk.panelH, c.s);
+    deckCanvas_.resetClip();
+    const Image& img = sk.animImage(sk.panelImage);
+    if (img.valid())
+        deckCanvas_.blit(img, 0, 0, sk.panelW, sk.panelH, 0, 0);
+    g_app->anim.draw(deckCanvas_, W_PANEL);
+    if (deckPressed_ >= 0 && deckInside_ && deckPressed_ < (int)sk.buttons.size()) {
+        const SkinButton& b = sk.buttons[deckPressed_];
+        deckCanvas_.darken(b.x, b.y, b.w, b.h, 0.6f);
+    }
+    Image snap = deckCanvas_.snapshot();
+    float f = std::min((float)lr.w / sk.panelW, (float)lr.h / sk.panelH);
+    float dw = sk.panelW * f, dh = sk.panelH * f;
+    deckF_ = f;
+    deckX_ = lr.x + (lr.w - dw) / 2;
+    deckY_ = lr.y + (lr.h - dh) / 2;
+    // letterbox: fill with the deck's own background colour (average of its left/right edge, inside the frame)
+    uint64_t r = 0, g = 0, bl = 0, n = 0;
+    for (int side = 0; side < 2; side++) {
+        int x = side == 0 ? 3 * snap.scale : snap.w - 1 - 3 * snap.scale;
+        for (int y = snap.h / 6; y < snap.h * 5 / 6; y += std::max(1, snap.h / 40)) {
+            uint32_t p = snap.px[(size_t)y * snap.w + x];
+            r += (p >> 16) & 255;
+            g += (p >> 8) & 255;
+            bl += p & 255;
+            n++;
+        }
+    }
+    uint32_t fillCol = n ? (uint32_t)((r / n) << 16 | (g / n) << 8 | (bl / n)) : 0;
+    c.fill(lr.x, lr.y, lr.w, lr.h, fillCol);
+    c.setClip(lr.x, lr.y, lr.w, lr.h);
+    c.blitScaled(snap, deckX_, deckY_, dw, dh);
+    c.resetClip();
 }
 
 int PlWnd::visibleRows() const { return std::max(1, (lh - 58) / kRowH); }
@@ -81,6 +132,7 @@ int PlWnd::buttonAt(int x, int y) const {
     const int W = lw, H = lh, X0 = W - 150, Y0 = H - 38;
     if (Rc{W - 11, 3, 9, 9}.hit(x, y)) return B_CLOSE;
     if (Rc{W - 20, 3, 9, 9}.hit(x, y)) return B_SHADE;
+    if (hasDeck() && turnRect().hit(x, y)) return B_TURN;
     if (Rc{14, H - 30, 25, 18}.hit(x, y)) return B_ADD;
     if (Rc{43, H - 30, 25, 18}.hit(x, y)) return B_REM;
     if (Rc{72, H - 30, 25, 18}.hit(x, y)) return B_SEL;
@@ -123,6 +175,16 @@ void PlWnd::paint(Canvas& c) {
     c.blit(pe, 153, ty, 25, 20, W - 25, 0);
     if (push_.is(B_CLOSE)) c.blit(pe, 52, 42, 9, 9, W - 11, 3);
     if (push_.is(B_SHADE)) c.blit(pe, 62, 42, 9, 9, W - 20, 3);
+    if (hasDeck()) {
+        Rc t = turnRect();
+        if (sk.hasTurnSprite) {
+            c.blit(pe, 100, push_.is(B_TURN) ? 58 : 43, 30, 11, t.x, t.y);
+        } else {  // skin without a TURN sprite: simple button made from the skin colours + font
+            c.fill(t.x, t.y, t.w, t.h, push_.is(B_TURN) ? sk.plSelectedBG : sk.plNormalBG);
+            c.frame(t.x, t.y, t.w, t.h, sk.plNormal);
+            sk.drawText(c, "TURN", t.x + 5, t.y + 3, true);
+        }
+    }
     // sides
     c.tile(pe, 0, 42, 12, 29, 0, 20, 12, H - 58);
     c.tile(pe, 31, 42, 20, 29, W - 20, 20, 20, H - 58);
@@ -132,12 +194,14 @@ void PlWnd::paint(Canvas& c) {
     c.blit(pe, 0, 72, 125, 38, 0, H - 38);
     c.blit(pe, 126, 72, 150, 38, W - 150, H - 38);
 
-    // list
+    // list (or the deck on the other side of the panel)
     Rc lr = listRect();
-    c.fill(lr.x, lr.y, lr.w, lr.h, sk.plNormalBG);
+    const bool deck = deckSide && hasDeck();
+    if (deck) paintDeck(c, lr);
+    else c.fill(lr.x, lr.y, lr.w, lr.h, sk.plNormalBG);
     ensureFont();
     const Playlist& pl = g_app->pl;
-    int rows = visibleRows() + 1;
+    int rows = deck ? 0 : visibleRows() + 1;
     for (int i = 0; i < rows; i++) {
         int idx = scroll_ + i;
         if (idx >= pl.size()) break;
@@ -155,7 +219,7 @@ void PlWnd::paint(Canvas& c) {
         c.resetClip();
     }
     // scroll handle
-    c.blit(pe, mode_ == M_SCROLL ? 61 : 52, 53, 8, 18, W - 15, scrollHandleY());
+    if (!deck) c.blit(pe, mode_ == M_SCROLL ? 61 : 52, 53, 8, 18, W - 15, scrollHandleY());
 
     // running time  "sel/total"
     bool unkSel = false, unkAll = false;
@@ -175,6 +239,14 @@ void PlWnd::paint(Canvas& c) {
         std::string s = buf;
         sk.drawText(c, s, W - 59 - (int)s.size() * 5, H - 15, true);
     }
+    g_app->anim.draw(c, W_PL);
+    // pressed feedback for the mini transport buttons in the bottom display
+    for (int b : {B_PREV, B_PLAY, B_PAUSE, B_STOP, B_NEXT, B_EJECT})
+        if (push_.is(b)) {
+            static const int xs[] = {4, 14, 24, 33, 42, 50}, ws[] = {10, 10, 9, 9, 8, 10};
+            int i = b - B_PREV;
+            c.darken(W - 150 + xs[i], H - 17, ws[i], 11, 0.55f);
+        }
     // flyout menu
     if (menu_ >= 0) {
         Menu d = menuDef(menu_);
@@ -276,6 +348,18 @@ void PlWnd::onMouseDown(int x, int y, WPARAM mk) {
         return;
     }
     Rc lr = listRect();
+    if (deckSide && hasDeck() && (lr.hit(x, y) || Rc{lw - 20, 20, 20, lh - 58}.hit(x, y))) {
+        int b = deckButtonAt(x, y);
+        if (b >= 0) {
+            deckPressed_ = b;
+            deckInside_ = true;
+            mode_ = M_BUTTON;
+            redraw();
+        } else {
+            startWindowDrag();
+        }
+        return;
+    }
     if (lr.hit(x, y) && x < lw - 20) {
         int row = rowAt(y);
         bool ctrl = (mk & MK_CONTROL) != 0, shift = (mk & MK_SHIFT) != 0;
@@ -393,6 +477,14 @@ void PlWnd::onMouseMove(int x, int y, WPARAM mk) {
             break;
         }
         case M_BUTTON: {
+            if (deckPressed_ >= 0) {
+                bool in = deckButtonAt(x, y) == deckPressed_;
+                if (in != deckInside_) {
+                    deckInside_ = in;
+                    redraw();
+                }
+                break;
+            }
             bool in = buttonAt(x, y) == push_.pressed;
             if (in != push_.inside) {
                 push_.inside = in;
@@ -434,6 +526,14 @@ void PlWnd::onMouseUp(int x, int y) {
             redraw();
             return;
         case M_BUTTON: {
+            if (deckPressed_ >= 0) {
+                int b = deckPressed_;
+                bool in = deckInside_ && deckButtonAt(x, y) == b;
+                deckPressed_ = -1;
+                redraw();
+                if (in && b < (int)skin().buttons.size()) g_app->skinAction(skin().buttons[b].action);
+                return;
+            }
             int id = push_.pressed;
             bool inside = push_.inside && buttonAt(x, y) == id;
             push_ = PushState();
@@ -441,7 +541,10 @@ void PlWnd::onMouseUp(int x, int y) {
             if (!inside) return;
             switch (id) {
                 case B_CLOSE: g_app->setWindowVisible(W_PL, false); break;
-                case B_SHADE: break;
+                case B_SHADE:
+                case B_TURN:
+                    if (hasDeck()) g_app->swapPanelPlaylist();
+                    break;
                 case B_PREV: g_app->prevTrack(); break;
                 case B_PLAY: g_app->playPressed(); break;
                 case B_PAUSE: g_app->pausePressed(); break;
@@ -458,6 +561,7 @@ void PlWnd::onMouseUp(int x, int y) {
 
 void PlWnd::onCaptureLost() {
     if (mode_ == M_MENU && menuSticky_) return;  // keep a sticky menu open
+    if (deckPressed_ >= 0) deckPressed_ = -1;
     if (mode_ == M_BUTTON) push_ = PushState();
     if (mode_ != M_NONE) {
         mode_ = M_NONE;
@@ -466,6 +570,7 @@ void PlWnd::onCaptureLost() {
 }
 
 bool PlWnd::onDblClick(int x, int y) {
+    if (deckSide && hasDeck()) return false;
     Rc lr = listRect();
     if (lr.hit(x, y) && x < lw - 20 && menu_ < 0) {
         int row = rowAt(y);
@@ -493,6 +598,7 @@ void PlWnd::onRightClick(int x, int y) {
 }
 
 void PlWnd::onWheel(int delta, int, int) {
+    if (deckSide && hasDeck()) return;
     scroll_ += delta > 0 ? -3 : 3;
     clampScroll();
     redraw();

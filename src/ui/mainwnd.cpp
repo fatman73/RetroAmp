@@ -335,6 +335,7 @@ void MainWnd::paintNormal(Canvas& c) {
     int rey = (g_app->repeat ? 30 : 0) + (push_.is(C_REPEAT) ? 15 : 0);
     c.blit(sr, 28, shy, 47, 15, 164, 89);
     c.blit(sr, 0, rey, 28, 15, 210, 89);
+    g_app->anim.draw(c, W_MAIN);
 }
 
 void MainWnd::paintShade(Canvas& c) {
@@ -511,7 +512,9 @@ void MainWnd::click(int id) {
         case C_SHUFFLE: g_app->toggleShuffle(); break;
         case C_REPEAT: g_app->toggleRepeat(); break;
         case C_EQ: g_app->toggleWindow(W_EQ); break;
-        case C_PL: g_app->toggleWindow(W_PL); break;
+        case C_PL:
+            g_app->toggleWindow(W_PL);
+            break;
         case C_ABOUT: g_app->handleCommand(CMD_ABOUT); break;
         case C_CL_A: g_app->setAlwaysOnTop(!g_app->alwaysOnTop); break;
         case C_CL_I: g_app->showFileInfo(g_app->pl.current); break;

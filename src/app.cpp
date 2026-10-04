@@ -8,6 +8,7 @@
 #include "ui/mainwnd.h"
 #include "ui/plwnd.h"
 #include "ui/viswnd.h"
+#include "ui/panelwnd.h"
 
 App* g_app = nullptr;
 
@@ -347,6 +348,7 @@ void App::loadSettings() {
     skinPath = cfg.str(M, L"Skin", L"");
     for (int i = 0; i < W_COUNT; i++)
         visible[i] = i == W_MAIN || cfg.flag(M, Fmt(L"Visible%d", i), i != W_DSP && i != W_VIS);
+    visible[W_PANEL] = false;  // the deck is the back side of the playlist panel
 
     const wchar_t* E = L"Equalizer";
     dsp.eqOn = cfg.flag(E, L"On", true);
@@ -384,6 +386,7 @@ void App::saveSettings() {
     cfg.set(M, L"PlTilesH", plTilesH);
     cfg.set(M, L"Skin", skinPath);
     cfg.set(M, L"Current", pl.current);
+    cfg.setFlag(M, L"PlSwapped", plSwapped);
     for (int i = 0; i < W_COUNT; i++) {
         cfg.setFlag(M, Fmt(L"Visible%d", i), visible[i]);
         if (wnd[i] && wnd[i]->hwnd) {
@@ -418,6 +421,10 @@ void App::createWindows() {
     dspWnd = new DspWnd();
     visWnd = new VisWnd();
     wnd[W_VIS] = visWnd;
+    panelWnd = new PanelWnd();
+    wnd[W_PANEL] = panelWnd;
+    panelWnd->lw = skin.panelW;
+    panelWnd->lh = skin.panelH;
     visWnd->loadState();
     wnd[W_MAIN] = mainWnd;
     wnd[W_EQ] = eqWnd;
@@ -437,7 +444,8 @@ void App::createWindows() {
                               {defX, defY + phys(116)},
                               {defX, defY + phys(232)},
                               {defX + phys(275), defY + phys(116)},
-                              {defX + phys(275), defY}};
+                              {defX + phys(275), defY},
+                              {defX, defY + phys(116)}};
     int pos[W_COUNT][2];
     bool valid = true;
     for (int i = 0; i < W_COUNT; i++) {
@@ -469,10 +477,14 @@ void App::createWindows() {
     plWnd->create(mainWnd->hwnd, pos[2][0], pos[2][1], L"RetroAmp Playlist");
     dspWnd->create(mainWnd->hwnd, pos[3][0], pos[3][1], L"RetroAmp Bass & DSP");
     visWnd->create(mainWnd->hwnd, pos[4][0], pos[4][1], L"RetroAmp Visualization");
+    panelWnd->create(mainWnd->hwnd, pos[5][0], pos[5][1], L"RetroAmp Skin Panel");
+    if (!skin.hasPanel) visible[W_PANEL] = false;
+    plSwapped = skin.hasPanel && cfg.flag(L"Main", L"PlSwapped", false);
     ShowWindow(mainWnd->hwnd, SW_SHOW);
     for (int i = 1; i < W_COUNT; i++)
         if (visible[i]) ShowWindow(wnd[i]->hwnd, SW_SHOWNOACTIVATE);
     if (alwaysOnTop) setAlwaysOnTop(true);
+    enforceSingleSlot();
 }
 
 // ---------------------------------------------------------------------------
@@ -820,21 +832,24 @@ void App::toggleWindow(int w) { setWindowVisible(w, !visible[w]); }
 
 void App::setWindowVisible(int w, bool v) {
     if (w == W_MAIN) return;
-    if (w == W_DSP && v != visible[W_DSP]) {
+    if (w == W_PANEL && v && !skin.hasPanel) return;
+    if (w == W_PANEL) return;  // the deck is the back side of the playlist panel now
+    if ((w == W_DSP || w == W_PANEL) && v != visible[w]) {
         // The bass panel docks directly under the equalizer (or the main window when the EQ
-        // is hidden); windows stacked below it move down / back up to make room.
-        RECT anchor = visible[W_EQ] ? eqWnd->screenRect() : mainWnd->screenRect();
-        RECT dr = dspWnd->screenRect();
-        int h = phys(dspWnd->lh);
+        // is hidden); a skin panel (e.g. a cassette deck) docks under the main window, like a
+        // component in a hi-fi tower. Windows stacked below move down / back up to make room.
+        RECT anchor = w == W_DSP && visible[W_EQ] ? eqWnd->screenRect() : mainWnd->screenRect();
+        RECT dr = wnd[w]->screenRect();
+        int h = phys(wnd[w]->lh);
         int edge = v ? anchor.bottom : dr.bottom;
         int left = v ? anchor.left : dr.left, right = v ? anchor.right : dr.right;
         for (int i = 0; i < W_COUNT; i++) {
-            if (i == W_DSP || i == W_MAIN || !visible[i]) continue;
+            if (i == w || i == W_MAIN || !visible[i]) continue;
             RECT r = wnd[i]->screenRect();
-            if (v && i == W_EQ) continue;
+            if (v && w == W_DSP && i == W_EQ) continue;
             if (r.top >= edge - 1 && r.left < right && r.right > left) wnd[i]->moveTo(r.left, r.top + (v ? h : -h));
         }
-        if (v) dspWnd->moveTo(anchor.left, anchor.bottom);
+        if (v) wnd[w]->moveTo(anchor.left, anchor.bottom);
     }
     if (w == W_VIS && v) {
         RECT vr = visWnd->screenRect();
@@ -909,6 +924,79 @@ void App::setMainShade(bool on) {
         RECT r = wnd[b]->screenRect();
         if (r.top >= before.bottom - 1) wnd[b]->moveTo(r.left, r.top + dy);
     }
+    saveSettings();
+}
+
+void App::skinAction(const std::wstring& a) {
+    if (a == L"prev") prevTrack();
+    else if (a == L"play") playPressed();
+    else if (a == L"pause") pausePressed();
+    else if (a == L"stop") stopPressed();
+    else if (a == L"next") nextTrack();
+    else if (a == L"eject") openFilesDialog(false);
+    else if (a == L"playlist" || a == L"turn") swapPanelPlaylist();
+}
+
+void App::hideAndCloseGap(int w) {
+    RECT gone = wnd[w]->screenRect();
+    int h = gone.bottom - gone.top;
+    ShowWindow(wnd[w]->hwnd, SW_HIDE);
+    visible[w] = false;
+    for (int i = 0; i < W_COUNT; i++) {
+        if (i == W_MAIN || i == w || !visible[i]) continue;
+        RECT r = wnd[i]->screenRect();
+        if (r.top >= gone.bottom - 1 && r.left < gone.right && r.right > gone.left) wnd[i]->moveTo(r.left, r.top - h);
+    }
+}
+
+void App::restackTower() {
+    RECT m = mainWnd->screenRect();
+    struct Item {
+        int id, top, h, rank;
+    };
+    std::vector<Item> col;
+    auto rank = [&](int i) {
+        if (i == W_PANEL || (i == W_PL && plSwapped)) return 1;
+        return i == W_EQ ? 2 : i == W_DSP ? 3 : i == W_PL ? 4 : 5;
+    };
+    for (int i = 0; i < W_COUNT; i++) {
+        if (i == W_MAIN || !visible[i]) continue;
+        RECT r = wnd[i]->screenRect();
+        if (std::abs(r.left - m.left) <= 3 && r.top >= m.top) col.push_back({i, (int)r.top, (int)(r.bottom - r.top), rank(i)});
+    }
+    std::sort(col.begin(), col.end(), [](const Item& a, const Item& b) { return a.top < b.top; });
+    // windows that overlap keep the canonical tower order (slot, EQ, bass, playlist, vis)
+    for (size_t pass = 0; pass < col.size(); pass++)
+        for (size_t i = 0; i + 1 < col.size(); i++)
+            if (col[i + 1].top < col[i].top + col[i].h - 2 && col[i + 1].rank < col[i].rank) std::swap(col[i], col[i + 1]);
+    int y = m.bottom;
+    for (auto& it : col) {
+        wnd[it.id]->moveTo(m.left, y);
+        y += it.h;
+    }
+}
+
+void App::enforceSingleSlot() {
+    // the deck lives on the back of the playlist panel - the old separate panel window is never shown
+    if (panelWnd && panelWnd->hwnd && IsWindowVisible(panelWnd->hwnd)) ShowWindow(panelWnd->hwnd, SW_HIDE);
+    visible[W_PANEL] = false;
+    if (plWnd) {
+        plWnd->deckSide = skin.hasPanel && plSwapped;
+        plWnd->redraw();
+    }
+}
+
+void App::swapPanelPlaylist() {
+    // TURN: the playlist panel shows its other side (list <-> cassette deck); one window, same place
+    if (!skin.hasPanel) return;
+    if (!visible[W_PL]) {
+        plWnd->deckSide = true;
+        setWindowVisible(W_PL, true);
+    } else {
+        plWnd->deckSide = !plWnd->deckSide;
+    }
+    plSwapped = plWnd->deckSide;
+    redraw(W_PL);
     saveSettings();
 }
 
@@ -1075,7 +1163,10 @@ bool App::loadSkin(const std::wstring& path, bool showErrors) {
     }
     skin = std::move(ns);
     skin.prepare(renderScale());
+    anim.reset();
     skinPath = path;
+    if (!skin.hasPanel) plSwapped = false;
+    enforceSingleSlot();
     for (auto w : wnd)
         if (w && w->hwnd) {
             w->updateRegion();
@@ -1219,6 +1310,8 @@ void App::showMainMenu(HWND owner, POINT pt) {
     AppendMenuW(wins, MF_STRING | (visible[W_PL] ? MF_CHECKED : 0), CMD_WND_PL, L"Playlist editor\tAlt+E");
     AppendMenuW(wins, MF_STRING | (visible[W_DSP] ? MF_CHECKED : 0), CMD_WND_DSP, L"Bass && DSP\tAlt+B");
     AppendMenuW(wins, MF_STRING | (visible[W_VIS] ? MF_CHECKED : 0), CMD_WND_VIS, L"Visualization\tAlt+V");
+    AppendMenuW(wins, MF_STRING | (skin.hasPanel ? 0 : MF_GRAYED) | (plSwapped ? MF_CHECKED : 0), CMD_PL_TO_DECK,
+                L"TURN playlist / cassette deck\tAlt+K");
 
     HMENU skins = CreatePopupMenu();
     AppendMenuW(skins, MF_STRING | (skinPath.empty() ? MF_CHECKED : 0), CMD_SKIN_DEFAULT, L"<Base skin: Retro Blue>");
@@ -1318,6 +1411,10 @@ void App::showPlaylistMenu(int which, HWND owner, POINT pt) {
         AppendMenuW(m, MF_STRING, CMD_PL_LOAD, L"Load playlist...");
         AppendMenuW(m, MF_STRING, CMD_PL_SAVE, L"Save playlist...");
         AppendMenuW(m, MF_STRING, CMD_PL_NEW, L"New (clear) playlist");
+        if (skin.hasPanel) {
+            AppendMenuW(m, MF_SEPARATOR, 0, nullptr);
+            AppendMenuW(m, MF_STRING, CMD_PL_TO_DECK, L"TURN to the cassette deck");
+        }
     } else if (which == 2) {
         DestroyMenu(sort);
         m = CreatePopupMenu();
@@ -1404,6 +1501,8 @@ void App::handleCommand(int cmd) {
         case CMD_WND_PL: toggleWindow(W_PL); break;
         case CMD_WND_DSP: toggleWindow(W_DSP); break;
         case CMD_WND_VIS: toggleWindow(W_VIS); break;
+        case CMD_WND_PANEL: toggleWindow(W_PANEL); break;
+        case CMD_PL_TO_DECK: swapPanelPlaylist(); break;
         case CMD_ZOOM100: case CMD_ZOOM150: case CMD_ZOOM200: case CMD_ZOOM250: case CMD_ZOOM300: case CMD_ZOOM400: {
             static const int zooms[] = {100, 150, 200, 250, 300, 400};
             setZoom(zooms[cmd - CMD_ZOOM100]);
@@ -1532,6 +1631,9 @@ bool App::handleKey(UINT vk, bool alt, bool ctrl, bool shift) {
             case 'E': toggleWindow(W_PL); return true;
             case 'B': toggleWindow(W_DSP); return true;
             case 'V': toggleWindow(W_VIS); return true;
+            case 'K':
+                if (skin.hasPanel) swapPanelPlaylist();
+                return true;
             case 'S': loadSkinDialog(); return true;
             case '3': showFileInfo(pl.firstSelected() >= 0 ? pl.firstSelected() : pl.current); return true;
         }
@@ -1708,6 +1810,12 @@ void App::savePlaylist() { pl.saveM3U(PathJoin(dataDir_, L"playlist.m3u8")); }
 void App::onTimer() {
     timerTicks_++;
     if (timerTicks_ % 300 == 0) savePlaylist();  // ~every 10 s
+    if (!skin.anims.empty()) {
+        anim.update();
+        for (int w : {W_EQ, W_PL})
+            if (visible[w] && skin.hasAnims(w)) redraw(w);
+        if (visible[W_PL] && plWnd->deckSide && skin.hasAnims(W_PANEL)) redraw(W_PL);
+    }
     mainWnd->tick();
     if (timerTicks_ % 8 == 0) {
         if (state() != PlayState::Stopped) redraw(W_PL);

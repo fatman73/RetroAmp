@@ -86,6 +86,7 @@ void EqWnd::paint(Canvas& c) {
     // sliders
     drawSlider(c, SliderX(0), d.preamp, slider_ == 0);
     for (int i = 0; i < kEqBands; i++) drawSlider(c, SliderX(i + 1), d.bands[i], slider_ == i + 1);
+    g_app->anim.draw(c, W_EQ);
 }
 
 void EqWnd::onMouseDown(int x, int y, WPARAM) {
