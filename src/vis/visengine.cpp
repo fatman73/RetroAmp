@@ -103,11 +103,11 @@ void VisAnalyzer::update(const float* s, int n, int sr, bool playing, VisAudio& 
 }
 
 // ---------------------------------------------------------------------------
-int VisEngine::presetCount() { return 7; }
+int VisEngine::presetCount() { return 8; }
 
 const wchar_t* VisEngine::presetName(int i) {
-    static const wchar_t* names[] = {L"Classic Analyzer", L"Scope Trails", L"Milk Tunnel",
-                                     L"Starfield Warp",   L"Plasma",       L"Spectrum Fire", L"Alemiga"};
+    static const wchar_t* names[] = {L"Classic Analyzer", L"Scope Trails",  L"Milk Tunnel", L"Starfield Warp",
+                                     L"Plasma",           L"Spectrum Fire", L"Alemiga",     L"Protracker"};
     return names[Clamp(i, 0, presetCount() - 1)];
 }
 
@@ -145,7 +145,8 @@ void VisEngine::render(const VisAudio& a) {
         case 3: starfield(a); break;
         case 4: plasma(a); break;
         case 5: fire(a); break;
-        default: boing(a); break;
+        case 6: boing(a); break;
+        default: protracker(a); break;
     }
 }
 
@@ -490,21 +491,10 @@ void VisEngine::boing(const VisAudio& a) {
         rectFill(0, (int)y, w_, std::max(1, h_ / 220), grid);
     }
     // ProTracker style VU meters, one per Paula channel (here: 4 frequency bands).
-    // They jump up instantly on a hit and fall at a constant speed, like in PT 2.x.
     {
-        static const int bands[5] = {0, 20, 50, 85, VisAudio::kSpec};
+        updateVu(a);
         const float meterW = W * 0.085f, maxH = floorY * 0.78f;
         for (int ch = 0; ch < 4; ch++) {
-            float e = 0;
-            for (int b = bands[ch]; b < bands[ch + 1]; b++) e += a.spec[b];
-            e /= (bands[ch + 1] - bands[ch]);
-            static const float gain[4] = {1.0f, 1.05f, 1.25f, 1.6f};  // treble is quieter: boost it
-            float lvl = Clamp((e * gain[ch] - 0.12f) / 0.6f, 0.0f, 1.0f);
-            bool hit = e > vuAvg_[ch] * 1.08f + 0.015f;
-            vuAvg_[ch] += (e - vuAvg_[ch]) * std::min(1.0f, a.dt * 3.0f);
-            if (hit && lvl > vu_[ch]) vu_[ch] = std::min(1.0f, lvl * 1.15f);
-            vu_[ch] = std::max(0.0f, vu_[ch] - a.dt * 1.1f);
-            if (!a.playing) vu_[ch] = std::max(0.0f, vu_[ch] - a.dt * 2);
             float cxm = W * (0.2f + ch * 0.2f);
             int x0 = (int)(cxm - meterW / 2), x1 = (int)(cxm + meterW / 2);
             int top = (int)(floorY - vu_[ch] * maxH);
@@ -574,6 +564,325 @@ void VisEngine::boing(const VisAudio& a) {
                 p = mix(16) | mix(8) | mix(0);
             } else {
                 p = c;
+            }
+        }
+    }
+}
+
+// VU meters, one per Paula channel (here: 4 frequency bands of the real sound).
+// They jump up instantly on a hit and fall at a constant speed, like in PT 2.x.
+void VisEngine::updateVu(const VisAudio& a) {
+    static const int bands[5] = {0, 20, 50, 85, VisAudio::kSpec};
+    static const float gain[4] = {1.0f, 1.05f, 1.25f, 1.6f};  // treble is quieter: boost it
+    for (int ch = 0; ch < 4; ch++) {
+        float e = 0;
+        for (int b = bands[ch]; b < bands[ch + 1]; b++) e += a.spec[b];
+        e /= (bands[ch + 1] - bands[ch]);
+        float lvl = Clamp((e * gain[ch] - 0.12f) / 0.6f, 0.0f, 1.0f);
+        bool hit = e > vuAvg_[ch] * 1.08f + 0.015f;
+        vuAvg_[ch] += (e - vuAvg_[ch]) * std::min(1.0f, a.dt * 3.0f);
+        if (hit && lvl > vu_[ch]) vu_[ch] = std::min(1.0f, lvl * 1.15f);
+        vu_[ch] = std::max(0.0f, vu_[ch] - a.dt * 1.1f);
+        if (!a.playing) vu_[ch] = std::max(0.0f, vu_[ch] - a.dt * 2);
+    }
+}
+
+// ---------------------------------------------------------------- 7. Protracker
+namespace {
+// Chunky 7x5 Topaz-like font of the ProTracker pattern editor.
+struct PtGlyph {
+    char c;
+    const char* r[5];
+};
+const PtGlyph kPtGlyphs[] = {
+    {'0', {".#####.", "##...##", "##...##", "##...##", ".#####."}},
+    {'1', {"..###..", "...##..", "...##..", "...##..", ".######"}},
+    {'2', {"######.", ".....##", ".#####.", "##.....", "#######"}},
+    {'3', {"######.", ".....##", "..####.", ".....##", "######."}},
+    {'4', {"##...##", "##...##", "#######", ".....##", ".....##"}},
+    {'5', {"#######", "##.....", "######.", ".....##", "######."}},
+    {'6', {".#####.", "##.....", "######.", "##...##", ".#####."}},
+    {'7', {"#######", ".....##", "....##.", "...##..", "...##.."}},
+    {'8', {".#####.", "##...##", ".#####.", "##...##", ".#####."}},
+    {'9', {".#####.", "##...##", ".######", ".....##", ".#####."}},
+    {'A', {".#####.", "##...##", "#######", "##...##", "##...##"}},
+    {'B', {"######.", "##...##", "######.", "##...##", "######."}},
+    {'C', {".#####.", "##...##", "##.....", "##...##", ".#####."}},
+    {'D', {"######.", "##...##", "##...##", "##...##", "######."}},
+    {'E', {"#######", "##.....", "#####..", "##.....", "#######"}},
+    {'F', {"#######", "##.....", "#####..", "##.....", "##....."}},
+    {'G', {".#####.", "##.....", "##..###", "##...##", ".#####."}},
+    {'H', {"##...##", "##...##", "#######", "##...##", "##...##"}},
+    {'I', {".#####.", "..###..", "..###..", "..###..", ".#####."}},
+    {'J', {"....###", ".....##", ".....##", "##...##", ".#####."}},
+    {'K', {"##...##", "##..##.", "#####..", "##..##.", "##...##"}},
+    {'L', {"##.....", "##.....", "##.....", "##.....", "#######"}},
+    {'M', {"##...##", "###.###", "##.#.##", "##...##", "##...##"}},
+    {'N', {"##...##", "###..##", "##.#.##", "##..###", "##...##"}},
+    {'O', {".#####.", "##...##", "##...##", "##...##", ".#####."}},
+    {'P', {"######.", "##...##", "######.", "##.....", "##....."}},
+    {'Q', {".#####.", "##...##", "##...##", "##..##.", ".###.##"}},
+    {'R', {"######.", "##...##", "######.", "##..##.", "##...##"}},
+    {'S', {".######", "##.....", ".#####.", ".....##", "######."}},
+    {'T', {"#######", "..###..", "..###..", "..###..", "..###.."}},
+    {'U', {"##...##", "##...##", "##...##", "##...##", ".#####."}},
+    {'V', {"##...##", "##...##", "##...##", ".##.##.", "..###.."}},
+    {'W', {"##...##", "##...##", "##.#.##", "###.###", "##...##"}},
+    {'X', {"##...##", ".##.##.", "..###..", ".##.##.", "##...##"}},
+    {'Y', {"##...##", "##...##", ".#####.", "..###..", "..###.."}},
+    {'Z', {"#######", "....##.", "..###..", ".##....", "#######"}},
+    {'-', {".......", ".......", ".#####.", ".......", "......."}},
+    {'#', {".##.##.", "#######", ".##.##.", "#######", ".##.##."}},
+    {':', {".......", "..##...", ".......", "..##...", "......."}},
+    {'.', {".......", ".......", ".......", ".......", "..##..."}},
+    {'/', {".....##", "....##.", "...##..", "..##...", ".##...."}},
+};
+
+struct PtFont {
+    uint8_t bits[128][5] = {};
+    PtFont() {
+        for (const PtGlyph& g : kPtGlyphs)
+            for (int y = 0; y < 5; y++) {
+                uint8_t b = 0;
+                for (int x = 0; x < 7; x++)
+                    if (g.r[y][x] == '#') b |= (uint8_t)(1 << (6 - x));
+                bits[(unsigned char)g.c][y] = b;
+            }
+    }
+};
+
+const PtFont& Font() {
+    static PtFont f;
+    return f;
+}
+
+const char kHex[] = "0123456789ABCDEF";
+const char* const kNoteNames[12] = {"C-", "C#", "D-", "D#", "E-", "F-", "F#", "G-", "G#", "A-", "A#", "B-"};
+// song order list: patterns repeat like in a real module
+const int kOrder[] = {0, 1, 2, 1, 3, 4, 3, 5, 2, 6, 7, 6, 8, 1, 2, 9};
+constexpr int kPtW = 320;          // Amiga low-res width
+constexpr double kRowTime = 0.12;  // 125 BPM, speed 6 (6 ticks of 20 ms per row)
+}  // namespace
+
+// Generates a plausible looking pattern (drums, snare/hats, bass line, lead) - the notes are fake,
+// only the VU meters follow the music.
+void VisEngine::ptGenerate(int pattern) {
+    uint32_t s = (0x9E3779B9u * (uint32_t)(pattern + 1)) ^ 0x5EEDu;
+    auto rnd = [&]() {
+        s ^= s << 13;
+        s ^= s >> 17;
+        s ^= s << 5;
+        return s;
+    };
+    auto chance = [&](int pct) { return (int)(rnd() % 100) < pct; };
+    static const int scale[5] = {0, 3, 5, 7, 10};  // minor pentatonic
+    const int root = (int)(rnd() % 12);
+    auto note = [&](int octave) {  // 1-based note number in octaves 1..3
+        int n = root + scale[rnd() % 5] + 12 * (octave - 1);
+        return (uint8_t)Clamp(n + 1, 1, 36);
+    };
+    for (int r = 0; r < 64; r++)
+        for (int c = 0; c < 4; c++) ptPat_[r][c] = PtCell{};
+    int bassFx = 0, leadFx = 0;
+    for (int r = 0; r < 64; r++) {
+        // 1: bass drum
+        if (r % 8 == 0 || (r % 8 == 6 && chance(35)) || (r % 16 == 10 && chance(50)))
+            ptPat_[r][0] = {25, 1, (uint16_t)(chance(30) ? 0xC40 : 0)};
+        // 2: snare on 4 / 12, hi-hats in between
+        if (r % 8 == 4)
+            ptPat_[r][1] = {25, 2, 0};
+        else if (r % 2 == 0 && chance(60))
+            ptPat_[r][1] = {36, 3, (uint16_t)(chance(50) ? 0xC20 : 0xC30)};
+        // 3: bass line, slides held between notes
+        if (r % 2 == 0 && chance(70)) {
+            ptPat_[r][2] = {note(1 + (int)(rnd() % 2)), 4, 0};
+            bassFx = chance(40) ? 0xA01 : 0;
+        } else if (bassFx) {
+            ptPat_[r][2].fx = (uint16_t)bassFx;
+        }
+        // 4: lead melody with vibrato / arpeggio tails
+        if (chance(r % 4 == 0 ? 55 : 22)) {
+            static const uint16_t arps[3] = {0x037, 0x047, 0x038};
+            ptPat_[r][3] = {note(2 + (int)(rnd() % 2)), (uint8_t)(5 + rnd() % 2),
+                            (uint16_t)(chance(25) ? arps[rnd() % 3] : 0)};
+            leadFx = chance(50) ? (0x400 | (int)(0x20 + rnd() % 0x40)) : (chance(50) ? 0xA01 : 0);
+        } else if (leadFx && chance(80)) {
+            ptPat_[r][3].fx = (uint16_t)leadFx;
+        }
+    }
+    ptPatNo_ = pattern;
+}
+
+// ProTracker 2.3 pattern editor: the fake module's rows jump up past the fixed cursor bar
+// (125 BPM, speed 6), the green VU meters of the 4 channels react to the real sound.
+void VisEngine::protracker(const VisAudio& a) {
+    updateVu(a);
+    const int nOrder = (int)(sizeof(kOrder) / sizeof(kOrder[0]));
+    if (ptPatNo_ < 0) ptGenerate(kOrder[ptPos_ % nOrder]);
+    if (a.playing) {
+        ptClock_ += a.dt;
+        while (ptClock_ >= kRowTime) {
+            ptClock_ -= kRowTime;
+            if (++ptRow_ >= 64) {
+                ptRow_ = 0;
+                ptPos_ = (ptPos_ + 1) % 128;
+                ptGenerate(kOrder[ptPos_ % nOrder]);
+            }
+        }
+    }
+
+    // --- low-res screen: integer scale k when it fits, else render 320 wide and shrink
+    const int k = w_ >= kPtW ? w_ / kPtW : 0;
+    const int VW = k ? w_ / k : kPtW;
+    const int VH = std::max(48, k ? h_ / k : h_ * kPtW / w_);
+    const uint32_t kGrey = 0x888888, kLight = 0xBBBBBB, kLighter = 0xCCCCCC, kDark = 0x555555, kBlack = 0;
+    const uint32_t kBlue = 0x3344FF;
+    pt_.assign((size_t)VW * VH, kGrey);
+    auto R = [&](int x, int y, int w, int h, uint32_t c) {
+        int x0 = std::max(0, x), y0 = std::max(0, y), x1 = std::min(VW, x + w), y1 = std::min(VH, y + h);
+        for (int yy = y0; yy < y1; yy++)
+            for (int xx = x0; xx < x1; xx++) pt_[(size_t)yy * VW + xx] = c;
+    };
+    // tall = the cursor row: 5 glyph rows stretched to 7 (middle rows doubled)
+    auto T = [&](int x, int y, const char* s, uint32_t c, bool tall) {
+        static const int map5[5] = {0, 1, 2, 3, 4}, map7[7] = {0, 1, 1, 2, 3, 3, 4};
+        const int* m = tall ? map7 : map5;
+        const int rows = tall ? 7 : 5;
+        for (; *s; s++, x += 8) {
+            unsigned ch = (unsigned char)*s;
+            if (ch >= 128) continue;
+            const uint8_t* g = Font().bits[ch];
+            for (int yy = 0; yy < rows; yy++)
+                for (int xx = 0; xx < 7; xx++)
+                    if (g[m[yy]] & (1 << (6 - xx))) {
+                        int px = x + xx, py = y + yy;
+                        if ((unsigned)px < (unsigned)VW && (unsigned)py < (unsigned)VH) pt_[(size_t)py * VW + px] = c;
+                    }
+        }
+    };
+    // sunken box: dark top/left, light bottom/right
+    auto sunken = [&](int x, int y, int w, int h, uint32_t fill) {
+        R(x - 1, y - 1, w + 2, h + 2, kLight);
+        R(x - 1, y - 1, w + 1, 1, kDark);
+        R(x - 1, y - 1, 1, h + 1, kDark);
+        R(x, y, w, h, fill);
+    };
+    // raised bevel around the whole screen
+    R(0, 0, VW, 1, kLighter);
+    R(0, 0, 1, VH, kLighter);
+    R(0, VH - 1, VW, 1, kDark);
+    R(VW - 1, 0, 1, VH, kDark);
+
+    // --- header: pattern number, status, song position
+    const int hdrH = 13;
+    char buf[32];
+    // --- pattern area layout: row numbers + 4 channel columns stretched over the whole width
+    const int gap = 4, rowW = 27;
+    const int chW = std::max(67, (VW - 2 * gap - rowW - 4 * gap) / 4);
+    int colX[5], colW[5] = {rowW, chW, chW, chW, chW};
+    colX[0] = gap;
+    for (int c = 1; c < 5; c++) colX[c] = colX[c - 1] + colW[c - 1] + gap;
+    colW[4] = std::max(chW, VW - gap - colX[4]);  // give the rounding leftover to the last channel
+    const int txtOff = (chW - 63) / 2;            // 8 glyphs, centred in a channel
+
+    sunken(colX[0], 3, rowW - 3, 7, kGrey);
+    snprintf(buf, sizeof(buf), "%02d", ptPatNo_);
+    T(colX[0] + 4, 4, buf, kBlack, false);
+    T(colX[1] + txtOff, 4, "STATUS:", kDark, false);
+    T(colX[1] + txtOff + 8 * 8, 4, a.playing ? "ALL RIGHT" : "STOPPED", kBlack, false);
+    snprintf(buf, sizeof(buf), "POS %03d", ptPos_);
+    T(colX[4] + colW[4] - txtOff - 8 * 7, 4, buf, kBlack, false);
+    R(0, hdrH, VW, 1, kDark);
+    R(0, hdrH + 1, VW, 1, kLighter);
+
+    const int top = hdrH + 4, bot = VH - 3;
+    for (int c = 0; c < 5; c++) sunken(colX[c], top, colW[c], bot - top, kBlack);
+    const int pitch = 7;
+    const int bandY = top + ((bot - top) / 2 - 4) / pitch * pitch + 1;  // keeps rows aligned to the pitch
+    auto cellText = [&](const PtCell& cell, char* t) {
+        if (cell.note) {
+            int n = cell.note - 1;
+            t[0] = kNoteNames[n % 12][0];
+            t[1] = kNoteNames[n % 12][1];
+            t[2] = (char)('1' + n / 12);
+        } else {
+            t[0] = t[1] = t[2] = '-';
+        }
+        t[3] = kHex[cell.sample >> 4];
+        t[4] = kHex[cell.sample & 15];
+        t[5] = kHex[(cell.fx >> 8) & 15];
+        t[6] = kHex[(cell.fx >> 4) & 15];
+        t[7] = kHex[cell.fx & 15];
+        t[8] = 0;
+    };
+    auto drawRow = [&](int r, int y, uint32_t col, bool tall) {
+        if (r < 0 || r > 63) return;
+        char num[4];
+        snprintf(num, sizeof(num), "%02d", r);
+        T(colX[0] + 7, y, num, col, tall);
+        for (int c = 0; c < 4; c++) {
+            char t[9];
+            cellText(ptPat_[r][c], t);
+            T(colX[c + 1] + txtOff, y, t, col, tall);
+        }
+    };
+    // rows above and below the cursor bar
+    for (int i = 1;; i++) {
+        int y = bandY - i * pitch + 1;
+        if (y < top + 1) break;
+        drawRow(ptRow_ - i, y, kBlue, false);
+    }
+    for (int i = 1;; i++) {
+        int y = bandY + 9 + (i - 1) * pitch + 1;
+        if (y + 5 > bot - 1) break;
+        drawRow(ptRow_ + i, y, kBlue, false);
+    }
+    // cursor bar (grey, raised) with the current row in black
+    for (int c = 0; c < 5; c++) {
+        R(colX[c], bandY, colW[c], 9, kLight);
+        R(colX[c], bandY, colW[c], 1, 0xE0E0E0);
+        R(colX[c], bandY + 8, colW[c], 1, kGrey);
+    }
+    drawRow(ptRow_, bandY + 1, kBlack, true);
+
+    // --- green VU meters standing on the cursor bar, gradient fixed to the screen
+    const int maxH = std::min(56, bandY - top - 2);
+    for (int c = 0; c < 4; c++) {
+        int hgt = (int)(vu_[c] * maxH + 0.5f);
+        if (hgt <= 0) continue;
+        const int vw = 10 + (chW - 67) / 6;  // meters get a bit wider with the columns
+        int mx = colX[c + 1] + chW / 2 - vw / 2;
+        for (int yy = 0; yy < hgt; yy++) {
+            float f = (float)yy / std::max(1, maxH);
+            uint32_t col = Hsv(0.33f - 0.22f * f, 1.0f, 0.98f);
+            for (int xx = 0; xx < vw; xx++) {
+                float shade = xx == 0 ? 1.0f : xx >= vw - 2 ? 0.72f : 0.92f;  // rounded tube look
+                int py = bandY - 1 - yy, px = mx + xx;
+                if ((unsigned)py < (unsigned)VH && (unsigned)px < (unsigned)VW) pt_[(size_t)py * VW + px] = Scale(col, shade);
+            }
+        }
+    }
+
+    // --- to the output buffer
+    if (k) {
+        for (int y = 0; y < h_; y++) {
+            const uint32_t* src = &pt_[(size_t)std::min(VH - 1, y / k) * VW];
+            uint32_t* dst = &buf_[(size_t)y * w_];
+            for (int x = 0; x < w_; x++) dst[x] = src[std::min(VW - 1, x / k)];
+        }
+    } else {  // window narrower than 320: area average keeps the text readable
+        for (int y = 0; y < h_; y++) {
+            int sy0 = y * VH / h_, sy1 = std::max(sy0 + 1, (y + 1) * VH / h_);
+            for (int x = 0; x < w_; x++) {
+                int sx0 = x * VW / w_, sx1 = std::max(sx0 + 1, (x + 1) * VW / w_);
+                uint32_t r = 0, g = 0, b = 0, n = 0;
+                for (int sy = sy0; sy < sy1 && sy < VH; sy++)
+                    for (int sx = sx0; sx < sx1 && sx < VW; sx++) {
+                        uint32_t p = pt_[(size_t)sy * VW + sx];
+                        r += (p >> 16) & 255, g += (p >> 8) & 255, b += p & 255, n++;
+                    }
+                n = std::max(1u, n);
+                buf_[(size_t)y * w_ + x] = ((r / n) << 16) | ((g / n) << 8) | (b / n);
             }
         }
     }

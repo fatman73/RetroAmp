@@ -49,8 +49,11 @@ private:
     void plasma(const VisAudio& a);
     void fire(const VisAudio& a);
     void boing(const VisAudio& a);
+    void protracker(const VisAudio& a);
 
     // helpers
+    void updateVu(const VisAudio& a);  // ProTracker style VU meters (vu_), one per band
+    void ptGenerate(int pattern);
     void clear(uint32_t c);
     void fade(int r256, int g256, int b256);
     void warp(float zoom, float rot, float dx, float dy, int fr, int fg, int fb, float waveAmp = 0, float waveFreq = 0,
@@ -74,6 +77,15 @@ private:
     float rot_ = 0, hue_ = 0, spin_ = 0;
     float pulse_ = 0, kick_ = 0, ring_ = 10;
     float vu_[4] = {}, vuAvg_[4] = {};
+    // Protracker preset: fake module (64-row patterns, 4 channels) scrolling past the cursor bar
+    struct PtCell {
+        uint8_t note = 0, sample = 0;  // note 1..36 = C-1..B-3, 0 = none
+        uint16_t fx = 0;               // effect command + parameter (3 hex digits)
+    };
+    PtCell ptPat_[64][4];
+    int ptRow_ = 0, ptPos_ = 0, ptPatNo_ = -1;
+    double ptClock_ = 0;
+    std::vector<uint32_t> pt_;  // low-res (320 px wide) Amiga screen, scaled into buf_
     uint32_t rng_ = 12345;
     uint32_t rnd() {
         rng_ ^= rng_ << 13;

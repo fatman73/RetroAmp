@@ -43,7 +43,7 @@ Builds the player and an Inno Setup 6 installer: `installer\Output\RetroAmp_Setu
 - **Bass Boost & Effects** (Alt+B, docks under the EQ): low-shelf bass boost with adjustable frequency, sub-bass,
   psycho-acoustic harmonics (bass on small speakers), stereo width, loudness, and a limiter that prevents clipping.
 - **Visualization** (Alt+V or the V button in the main window): 7 old-school presets in the MilkDrop/AVS spirit
-  (Classic Analyzer, Scope Trails, Milk Tunnel, Starfield Warp, Plasma, Spectrum Fire, Alemiga — Boing Ball with ProTracker VU meters), with beat detection,
+  (Classic Analyzer, Scope Trails, Milk Tunnel, Starfield Warp, Plasma, Spectrum Fire, Alemiga — Boing Ball with ProTracker VU meters, Protracker — scrolling 4-channel pattern editor with green VU meters), with beat detection,
   AUTO mode (switches every 25 s), and fullscreen (double-click or F; Esc to exit). Switch presets with ←/→ or the mouse wheel.
 - **Zoom:** 100 / 150 / 200 / 250 / 300 / 400 % (*Options → Size*, Ctrl+D, Ctrl + / Ctrl −).
   Fractional sizes are rendered at double resolution and averaged 2×2, so pixels stay even.
