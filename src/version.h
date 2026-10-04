@@ -3,7 +3,7 @@
 // Bump on every release: patch +1 each new version (1.0.1, 1.0.2, ...) - rule set by Rafał 2026-10-04.
 #define RETROAMP_VER_MAJOR 1
 #define RETROAMP_VER_MINOR 0
-#define RETROAMP_VER_PATCH 3
+#define RETROAMP_VER_PATCH 4
 
 #define RETROAMP_STR2(x) #x
 #define RETROAMP_STR(x) RETROAMP_STR2(x)

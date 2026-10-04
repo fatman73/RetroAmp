@@ -52,7 +52,7 @@ private:
     void protracker(const VisAudio& a);
 
     // helpers
-    void updateVu(const VisAudio& a);  // ProTracker style VU meters (vu_), one per band
+    void updateVu(const VisAudio& a, bool follow);  // ProTracker style VU meters (vu_), one per band
     void ptGenerate(int pattern);
     void clear(uint32_t c);
     void fade(int r256, int g256, int b256);

@@ -492,7 +492,7 @@ void VisEngine::boing(const VisAudio& a) {
     }
     // ProTracker style VU meters, one per Paula channel (here: 4 frequency bands).
     {
-        updateVu(a);
+        updateVu(a, false);
         const float meterW = W * 0.085f, maxH = floorY * 0.78f;
         for (int ch = 0; ch < 4; ch++) {
             float cxm = W * (0.2f + ch * 0.2f);
@@ -571,7 +571,9 @@ void VisEngine::boing(const VisAudio& a) {
 
 // VU meters, one per Paula channel (here: 4 frequency bands of the real sound).
 // They jump up instantly on a hit and fall at a constant speed, like in PT 2.x.
-void VisEngine::updateVu(const VisAudio& a) {
+// follow = true: the meter tracks the band loudness continuously (plus a kick on transients), so it
+// visibly moves with the music; false: it only jumps on hits like note triggers in PT (Alemiga).
+void VisEngine::updateVu(const VisAudio& a, bool follow) {
     static const int bands[5] = {0, 20, 50, 85, VisAudio::kSpec};
     static const float gain[4] = {1.0f, 1.05f, 1.25f, 1.6f};  // treble is quieter: boost it
     for (int ch = 0; ch < 4; ch++) {
@@ -580,9 +582,17 @@ void VisEngine::updateVu(const VisAudio& a) {
         e /= (bands[ch + 1] - bands[ch]);
         float lvl = Clamp((e * gain[ch] - 0.12f) / 0.6f, 0.0f, 1.0f);
         bool hit = e > vuAvg_[ch] * 1.08f + 0.015f;
-        vuAvg_[ch] += (e - vuAvg_[ch]) * std::min(1.0f, a.dt * 3.0f);
-        if (hit && lvl > vu_[ch]) vu_[ch] = std::min(1.0f, lvl * 1.15f);
-        vu_[ch] = std::max(0.0f, vu_[ch] - a.dt * 1.1f);
+        if (follow) {
+            float kick = Clamp((e - vuAvg_[ch]) / 0.10f, 0.0f, 1.0f);  // rise above the recent average
+            float target = Clamp(lvl * 0.6f + kick * 0.5f, 0.0f, 1.0f);
+            vuAvg_[ch] += (e - vuAvg_[ch]) * std::min(1.0f, a.dt * 2.0f);
+            if (target > vu_[ch]) vu_[ch] = target;
+            vu_[ch] = std::max(0.0f, vu_[ch] - a.dt * 1.6f);
+        } else {
+            vuAvg_[ch] += (e - vuAvg_[ch]) * std::min(1.0f, a.dt * 3.0f);
+            if (hit && lvl > vu_[ch]) vu_[ch] = std::min(1.0f, lvl * 1.15f);
+            vu_[ch] = std::max(0.0f, vu_[ch] - a.dt * 1.1f);
+        }
         if (!a.playing) vu_[ch] = std::max(0.0f, vu_[ch] - a.dt * 2);
     }
 }
@@ -716,7 +726,7 @@ void VisEngine::ptGenerate(int pattern) {
 // ProTracker 2.3 pattern editor: the fake module's rows jump up past the fixed cursor bar
 // (125 BPM, speed 6), the green VU meters of the 4 channels react to the real sound.
 void VisEngine::protracker(const VisAudio& a) {
-    updateVu(a);
+    updateVu(a, true);
     const int nOrder = (int)(sizeof(kOrder) / sizeof(kOrder[0]));
     if (ptPatNo_ < 0) ptGenerate(kOrder[ptPos_ % nOrder]);
     if (a.playing) {
