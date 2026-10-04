@@ -2,6 +2,9 @@
 
 A native Windows (C++/Win32) audio player in the style of classic Winamp 2.x.
 
+![RetroAmp skins 1/2](docs/skins_1.png)
+![RetroAmp skins 2/2](docs/skins_2.png)
+
 ## Build
 
 ```
@@ -27,7 +30,8 @@ Builds the player and an Inno Setup 6 installer: `installer\Output\RetroAmp_Setu
   (Workbench 3.0 / MagicWB style with the Boing Ball), and animated skins with their own panel:
   **HiFi Tower 90** (cassette deck with spinning reels, VU needles and the title on the tape label),
   **Radiola** (valve radio: Nixie digits, magic eye, dial pointer following the song),
-  **Synthwave '84** (moving neon grid, sunset), **Aqua** (spinning CD) and **Windows 98** (Sound Recorder).
+  **Synthwave '84** (moving neon grid, sunset), **Aqua** (spinning CD), **Windows 98** (Sound Recorder)
+  and **Pocket Stereo '79** (late-70s portable cassette player: blue brushed metal, silver keys, orange HOTLINE button).
   The panel and the playlist share a slot (toggle button, **PL** button, or the cassette gadget on the playlist).
   Generators: `tools/gen_skin.py`, `tools/gen_amiga.py`, `tools/gen_kit.py`. Make your own: see [SKINNING.md](SKINNING.md).
   HD skins use the same sprite layout, just N× larger PNG sheets; classic 1× skins are smoothed with Scale2x/Scale3x.

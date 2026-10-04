@@ -296,7 +296,7 @@ class Kit:
         G.rrect(p, 12, 84, 164, 106, 2, [(0.0, (34, 34, 37)), (0.5, (20, 20, 22)), (1.0, (12, 12, 13))],
                 outline=(60, 60, 66), ow=0.35)
         G.rrect(p, 34, 89, 142, 100, 1.5, [(0.0, (16, 16, 18)), (1.0, (6, 6, 7))], outline=(70, 70, 76), ow=0.3)
-        text_at(p, 88, 96.6, "FULL LOGIC COMPUTER CONTROL", (226, 226, 230), 4.6, "arialbd.ttf", "ms")
+        text_at(p, 88, 96.6, self.deck_strip, (226, 226, 230), 4.6, "arialbd.ttf", "ms")
         for bx in (23, 153):
             G.ellipse(p, bx - 4.6, 90.4, bx + 4.6, 99.6, [(0.0, (60, 60, 66)), (1.0, (8, 8, 9))], outline=(0, 0, 0), ow=0.4)
             G.ellipse(p, bx - 3, 92, bx + 3, 98, [(0.0, (10, 10, 11)), (1.0, (40, 40, 44))])
@@ -363,6 +363,9 @@ class Kit:
                            "Frames": 3, "X": 214, "Y": 80})
 
     cassette_style = "classic"  # classic (grey label, blue stripe) | ar (black & gold, high position)
+    cassette_stripe = (30, 112, 212)
+    glass_mul, glass_add = 0.60, (2, 3, 6)
+    deck_strip = "FULL LOGIC COMPUTER CONTROL"
 
     def _hub(self, img, cx, cy, rot):
         # white plastic hub: outer ring, hole with six teeth pointing inwards, dark spindle opening
@@ -435,7 +438,7 @@ class Kit:
         else:
             text_at(p, X(0.08), Y(0.57), "A", (248, 248, 248), 7.5, "arialbd.ttf", "ls")
             text_at(p, X(0.93), Y(0.57), "C-90", (60, 64, 66), 5, "arialbd.ttf", "rs")
-            rect(p, X(0.045), Y(0.645), X(0.955), Y(0.70), (30, 112, 212))
+            rect(p, X(0.045), Y(0.645), X(0.955), Y(0.70), self.cassette_stripe)
         if label_extra:
             label_extra(p)
         return [(int(round(cx)), int(round(cy)), r) for cx, cy, r in reels]
@@ -448,7 +451,7 @@ class Kit:
         sx, sy = ox + xx / K, oy + yy / K
         x0, y0, x1, y1 = rect_
         inside = (sx >= x0) & (sx < x1) & (sy >= y0) & (sy < y1)
-        t = a * 0.60 + np.array([2, 3, 6], np.float32)  # tint
+        t = a * np.array(self.glass_mul, np.float32) + np.array(self.glass_add, np.float32)  # tint
         d = (sx - x0) * 0.55 + (sy - y0)
         band = np.clip(1 - np.abs(d - 48) / 10, 0, 1) * 0.16 + np.clip(1 - np.abs(d - 66) / 3, 0, 1) * 0.10
         glare = np.clip(1 - (sy - y0) / 7, 0, 1) * 0.08
@@ -525,8 +528,8 @@ class Kit:
         img = self.body(275, 116)
         self.frame(img, 0, 0, 275, 116)
         # display: right part to y=55, left part (clutter, time, vis) to y=68
-        self.inset(img, 4, 16, 272, 56, self.lcd, r=3)
         self.inset(img, 4, 16, 103, 69, self.lcd, r=3)
+        self.inset(img, 4, 16, 272, 56, self.lcd, r=3)
         rect(img, 5, 17, 271, 55, self.lcd)
         rect(img, 5, 17, 102, 68, self.lcd)
         for dx in (48, 60, 78, 90):
@@ -1823,7 +1826,132 @@ class Win98(Kit):
                            "Font": "Tahoma", "Size": 7, "Color": "#000000"})
 
 
-STYLES = [HiFiTower, Radiola, Synthwave, Aqua, Win98]
+# ============================================================================ 6. Pocket Stereo '79
+class PocketStereo(Kit):
+    """Late-70s portable cassette player: blue brushed metal, silver keys, orange accents."""
+    key = "PocketStereo"
+    name = "Pocket Stereo '79"
+    title = "RETROAMP  ·  POCKET STEREO"
+    lcd = (8, 8, 10)
+    lcd_text = (255, 140, 40)
+    lcd_dim = (130, 70, 20)
+    lcd_ghost = (34, 20, 10)
+    label_col = (226, 230, 238)
+    glyph = (30, 34, 44)
+    accent = (255, 120, 20)
+    accent2 = (255, 190, 110)
+    pl_text, pl_cur, pl_bg, pl_sel, pl_font = (255, 170, 90), (255, 255, 255), (10, 12, 18), (70, 46, 24), "Bahnschrift"
+    vis_top, vis_bot = (255, 220, 160), (255, 100, 20)
+    display_glow = 0.8
+    cassette_stripe = (255, 110, 20)
+    glass_mul, glass_add = (0.55, 0.62, 0.78), (0, 4, 14)
+    deck_strip = "STEREO CASSETTE PLAYER  ·  2 HEADPHONE JACKS"
+    ORANGE = (255, 120, 20)
+
+    def body(self, w, h):
+        return brushed(w, h, (58, 86, 148), var=8, seed=int(w * 11 + h * 3), vert=(14, -10))
+
+    def silver(self, w, h, seed=0):
+        return brushed(w, h, (196, 200, 208), var=7, seed=seed, vert=(14, -12))
+
+    def frame(self, img, x0, y0, x1, y1):
+        rect(img, x0, y0, x1, y0 + 1, (150, 176, 226)); rect(img, x0, y0, x0 + 1, y1, (120, 146, 200))
+        rect(img, x0, y1 - 1, x1, y1, (18, 26, 52)); rect(img, x1 - 1, y0, x1, y1, (18, 26, 52))
+
+    def inset(self, img, x0, y0, x1, y1, fill, r=3):
+        G.rrect(img, x0 - 1, y0 - 1, x1 + 1, y1 + 1, r + 1, [(0.0, (230, 232, 238)), (1.0, (120, 124, 134))])
+        G.rrect(img, x0, y0, x1, y1, r, fill, outline=(0, 0, 0), ow=0.4)
+
+    def subpanel(self, img, x0, y0, x1, y1):
+        G.rrect(img, x0, y0, x1, y1, 3, (20, 28, 54))
+        panel = self.silver(x1 - x0 - 1.2, y1 - y0 - 1.2, seed=int(x0 + y0))
+        img.paste(panel, (S(x0 + 0.6), S(y0 + 0.6)), G._rr_mask_px(panel.width, panel.height, 2.5 * K))
+
+    def button(self, img, x, y, w, h, pressed, glyph=None, label=None, sel=False, kind="transport"):
+        # chunky silver mechanical key with a dark slot around it
+        G.rrect(img, x + 0.2, y + 0.2, x + w - 0.2, y + h - 0.2, 2.6, (16, 20, 36))
+        key = self.silver(w - 1.8, h - (1.8 if not pressed else 1.2), seed=int(w * 7 + h * 5))
+        if pressed:
+            key = key.point(lambda v: int(v * 0.82))
+        img.paste(key, (S(x + 0.9), S(y + (0.9 if not pressed else 1.4))), G._rr_mask_px(key.width, key.height, 2 * K))
+        if not pressed:
+            rect(img, x + 1.6, y + 1.1, x + w - 1.6, y + 1.5, (250, 250, 252))
+            rect(img, x + 1.6, y + h - 1.5, x + w - 1.6, y + h - 1.0, (110, 114, 124))
+        if sel or glyph is g_play:
+            rect(img, x + 2, y + h - 2.6, x + w - 2, y + h - 1.8, self.ORANGE)
+        self.button_face(img, x, y, w, h, pressed, glyph, label, sel)
+
+    def gadget(self, img, x, y, kind, pressed):
+        G.ellipse(img, x + 0.4, y + 0.4, x + 8.6, y + 8.6, [(0.0, (240, 242, 246)), (1.0, (140, 144, 154))] if not pressed
+                  else [(0.0, (130, 134, 144)), (1.0, (210, 212, 218))], outline=(16, 20, 36), ow=0.45)
+        if kind == "close":
+            G.ellipse(img, x + 2.4, y + 2.4, x + 6.6, y + 6.6, self.ORANGE)
+        else:
+            self.gadget_glyph(img, x, y, kind, (30, 34, 44))
+
+    def title_bar(self, active, title, shade=False):
+        img = self.body(275, 14)
+        self.frame(img, 0, 0, 275, 14)
+        col = self.label_col if active else (150, 164, 196)
+        rect(img, 1, 11.6, 274, 12.2, self.ORANGE if active else (120, 90, 70))
+        if shade:
+            self.inset(img, 118, 2.5, 166, 10.5, self.lcd, r=1.5)
+            text_at(img, 20, 9.5, "RETROAMP", col, 6.5, "bahnschrift.ttf", "ls", "Bold")
+            return img
+        text_at(img, 137.5, 9.6, title, col, 6.6, "bahnschrift.ttf", "ms", "Bold")
+        return img
+
+    def groove_h(self, img, x0, y0, x1, y1):
+        G.rrect(img, x0, y0, x1, y1, (y1 - y0) / 2, (12, 16, 30), outline=(120, 140, 190), ow=0.35)
+
+    def fill_h(self, img, x0, y0, x1, y1, frac):
+        if frac > 0.01:
+            G.rrect(img, x0, y0, x0 + (x1 - x0) * frac, y1, (y1 - y0) / 2, [(0.0, self.accent2), (1.0, self.ORANGE)])
+
+    def thumb(self, img, w, h, pressed, vertical=False):
+        G.rrect(img, 0, 0, w, h, min(w, h) / 3, (16, 20, 36))
+        cap = self.silver(w - 1.2, h - 1.2, seed=w * 3 + h)
+        if pressed:
+            cap = cap.point(lambda v: int(v * 0.85))
+        img.paste(cap, (S(0.6), S(0.6)), G._rr_mask_px(cap.width, cap.height, min(w, h) / 3.4 * K))
+        if vertical:
+            rect(img, 2, h / 2 - 0.45, w - 2, h / 2 + 0.45, self.ORANGE)
+        else:
+            rect(img, w / 2 - 0.45, 2, w / 2 + 0.45, h - 2, self.ORANGE)
+
+    def eq_slot(self, cell, p):
+        G.rrect(cell, 5.2, 1, 8.8, 62, 1.8, (12, 16, 30), outline=(120, 140, 190), ow=0.3)
+        center, pos = 31.5, 5.5 + (1 - p) * 51
+        y0, y1 = sorted((center, pos))
+        if y1 - y0 > 0.3:
+            G.rrect(cell, 6, y0, 8, y1, 0.8, [(0.0, self.accent2), (1.0, self.ORANGE)])
+        for yy in (5.5, 31.5, 57.5):
+            rect(cell, 2.5, yy - 0.3, 4.5, yy + 0.3, self.label_col)
+            rect(cell, 9.5, yy - 0.3, 11.5, yy + 0.3, self.label_col)
+
+    def logo(self, img, x0, y0, x1, y1):
+        # the famous orange "hotline" button
+        cx, cy = (x0 + x1) / 2, y0 + 12
+        G.ellipse(img, cx - 10, cy - 10, cx + 10, cy + 10, (16, 20, 36))
+        G.ellipse(img, cx - 9, cy - 9, cx + 9, cy + 9, [(0.0, (255, 180, 90)), (0.6, (255, 110, 20)), (1.0, (200, 70, 10))])
+        G.ellipse(img, cx - 5.5, cy - 7.5, cx + 3.5, cy - 2.5, (255, 220, 170))
+        text_at(img, cx, y1 - 0.5, "HOTLINE", (240, 240, 244), 3.8, "bahnschrift.ttf", "ms", "Bold")
+
+    def main_extras(self, img):
+        # silver strip with the model name under the display (like the side of the player)
+        text_at(img, 21, 112.3, "STEREO CASSETTE PLAYER", (200, 210, 232), 3.8, "bahnschrift.ttf", "ls", "SemiBold")
+
+    def make_panel(self):
+        self.cassette_deck("RETROAMP  POCKET STEREO  TPS-79")
+
+    def deck_text(self):
+        return (226, 230, 238), (170, 186, 220)
+
+    def dsp_colors(self):
+        return (30, 34, 44), (30, 34, 44), (226, 230, 238)
+
+
+STYLES = [HiFiTower, Radiola, Synthwave, Aqua, Win98, PocketStereo]
 
 
 # ============================================================================ decks for the older skins

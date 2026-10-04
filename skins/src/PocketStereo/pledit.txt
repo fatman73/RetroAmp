@@ -1,0 +1,6 @@
+[Text]
+Normal=#FFAA5A
+Current=#FFFFFF
+NormalBG=#0A0C12
+SelectedBG=#462E18
+Font=Bahnschrift
